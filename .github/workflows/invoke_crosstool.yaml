@@ -61,6 +61,7 @@ jobs:
           sudo mkdir /t
           sudo mount --bind $GITHUB_WORKSPACE /t
           echo "TC_WORKDIR=/t" >> $GITHUB_ENV
+          echo "EXECUTE_UNDER_DOCKER=1" >> $GITHUB_ENV
 
       - name: Setup workdir everywhere else
         if: ${{ runner.os != 'Linux' }}
@@ -109,7 +110,7 @@ jobs:
 
       - name: Extract copy of crosstool-ng
         run: |
-          tar xf ct-ng.tar
+          tar xf ct-ng.tar -C $HOME
 
       - name: Download source tarballs
         uses: actions/download-artifact@v4

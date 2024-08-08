@@ -58,10 +58,10 @@ jobs:
             export LDFLAGS="$LDFLAGS -L/opt/homebrew/opt/ncurses/lib -L/opt/homebrew/opt/gettext/lib"
           fi
           ./bootstrap
-          ./configure --prefix=$PWD/.local/
+          ./configure --prefix=$HOME/.local/crosstool-ng
           make
           make install
-          tar cf ct-ng.tar .local/
+          tar cf ct-ng.tar -C $HOME .local/
 
       - name: "Upload crosstool-ng"
         uses: actions/upload-artifact@v4

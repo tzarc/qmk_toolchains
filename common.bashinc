@@ -373,7 +373,9 @@ function build_one() {
         ${SED} -i \
             -e 's/^.*CT_GLIBC_V_.*$/# CT_GLIBC_V_???? is not set/' \
             .config
-        echo CT_GLIBC_V_2_28=y >>.config
+        echo "CT_GLIBC_V_2_28=y" >>.config
+        echo "CT_GLIBC_OLDEST_ABI=\"2.28\"" >>.config
+        echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--with-glibc-version=2.28\"" >>.config
         ct-ng olddefconfig
     fi
 

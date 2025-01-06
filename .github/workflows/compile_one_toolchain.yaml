@@ -1,0 +1,48 @@
+---
+name: "(internal) Compile one toolchain"
+
+on:
+  workflow_call:
+    inputs:
+      crosstool_host_os: { type: string, required: true }
+      build_host: { type: string, required: true }
+      target_host: { type: string, required: true }
+      build_script: { type: string, required: true }
+      fetch_bootstrap: { type: boolean, required: false, default: true }
+      toolchain_suffix: { type: string, required: false, default: "" }
+
+env:
+  TC_WORKDIR: '/t'
+  EXECUTE_UNDER_DOCKER: true
+
+jobs:
+  # Split up the build as compiling newlib/libstdc++ targeting ARM takes so damn long.
+  phase1:
+    name: Build toolchain (phase 1)
+    uses: ./.github/workflows/invoke_crosstool.yaml
+    with:
+      crosstool_host_os: ${{ inputs.crosstool_host_os }}
+      build_host: ${{ inputs.build_host }}
+      target_host: ${{ inputs.target_host }}
+      build_script: ${{ inputs.build_script }}
+      fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
+      toolchain_suffix: ${{ inputs.toolchain_suffix }}
+      crosstool_args: "build STOP=libc_post_cc"
+      restore_state: false
+      phase_number: 1
+
+  phase3:
+    name: Build toolchain (phase 2)
+    needs: [phase1]
+    uses: ./.github/workflows/invoke_crosstool.yaml
+    with:
+      crosstool_host_os: ${{ inputs.crosstool_host_os }}
+      build_host: ${{ inputs.build_host }}
+      target_host: ${{ inputs.target_host }}
+      build_script: ${{ inputs.build_script }}
+      fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
+      toolchain_suffix: ${{ inputs.toolchain_suffix }}
+      crosstool_args: "build RESTART=companion_libs_for_target"
+      save_state: false
+      toolchain_tarball: true
+      phase_number: 2

@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
-# Copyright 2024 Nick Brassel (@tzarc)
+# Copyright 2024-2025 Nick Brassel (@tzarc)
 # SPDX-License-Identifier: GPL-2.0-or-later
+
+set -eEuo pipefail
+
+export SDK_VERSION=15.0
 
 # If necessary, re-exec with a clean environment inside docker
 function respawn_docker_if_needed() {
     if [[ "$(uname -s)" == "Linux" ]] && [[ -n "${EXECUTE_UNDER_DOCKER:-}" ]]; then
+        eval "$(parse_args "$@")"
+        [ -n "${container_image:-}" ] || container_image='ghcr.io/tzarc/qmk_toolchains:builder'
+        cd "$script_dir"
         docker run --rm \
-            -v "$HOME/.local/crosstool-ng:$HOME/.local/crosstool-ng" \
             -v "$script_dir:$TC_WORKDIR" \
             -w "$TC_WORKDIR" \
-            ubuntu:jammy \
-            bash -xc "./ubuntu-prereqs.sh && groupadd -g $(id -g) $USER && useradd -g $(id -g) -u $(id -u) -M -N $USER && su -g $USER -c \"cd $TC_WORKDIR && ./$(basename $this_script) $*\" - $USER"
+            -e TC_WORKDIR="$TC_WORKDIR" \
+            $container_image \
+            ./$(basename $this_script) "$@"
         exit $?
     fi
 }
@@ -22,6 +29,10 @@ function havecmd() {
 }
 
 havecmd gsed && SED=gsed || SED=sed
+
+function cpu_count() {
+    nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+}
 
 function verify_crosstool() {
     if ! havecmd ct-ng; then
@@ -36,7 +47,7 @@ function fn_os() {
         os_name=$(uname -s | tr 'A-Z' 'a-z')
     fi
     case "$os_name" in
-    *darwin* | *macos*)
+    *darwin* | *macos* | *apple*)
         echo macos
         ;;
     *windows* | *mingw* | *w64*)
@@ -127,6 +138,7 @@ function build_one_args() {
 --tools-prefix=<value>  -- Override the build toolchain. For example \`x86_64-unknown-linux-gnu-\`, with the trailing slash. \`gcc\` et.al. will be appended. (optional)
 --dir-suffix=<value>    -- Appends a suffix to the toolchain output directory. (optional)
 --build-host-compile    -- Runs a build producing an earlier version of gcc, for subsequent gcc generated binary compatibility reasons
+--container-image       -- Which container image to use.
 __EOT__
 }
 
@@ -144,10 +156,17 @@ function build_one_help() {
     done
 }
 
-function build_one() {
+function ct_ng_olddefconfig() {
+    ct-ng olddefconfig 2>&1 \
+        | grep -vE 'CONF.*olddefconfig' \
+        | grep -vE '^#' \
+        | grep -vE 'warning: override:' \
+    || true
+}
+
+function parse_args() {
     set -eEuo pipefail
     umask 022
-    verify_crosstool
 
     while read arg; do
         unset $arg
@@ -162,12 +181,12 @@ function build_one() {
             N=${N##--}
             N=$(echo $N | tr '-' '_')
             V=${1##*=}
-            eval local $N="$V"
+            echo export $N="$V"
             ;;
         --*)
             N=${1##--}
             N=$(echo $N | tr '-' '_')
-            eval local $N=true
+            echo export $N=true
             ;;
         *)
             positional_args+=($1)
@@ -177,6 +196,14 @@ function build_one() {
         unset N
         unset V
     done
+    echo "positional_args=("${positional_args[@]}")"
+}
+
+function build_one() {
+    set -eEuo pipefail
+    umask 022
+    verify_crosstool
+    eval "$(parse_args "$@")"
 
     if [[ ! -z "${help:-}" ]]; then
         build_one_args
@@ -207,14 +234,25 @@ function build_one() {
     mkdir -p "$build_dir"
     cd "$build_dir"
 
+    # Remove any existing configuration
     [[ ! -e .config ]] || rm .config
+
+    # Load the crosstool-ng sample configuration for the target
     ct-ng $sample_name
-    echo "CT_EXPERIMENTAL=y" >>.config
+
+    # Set up the build environment params
+    echo "CT_EXPERIMENTAL=y" >>.config # required for some features
     echo "CT_FORCE_EXTRACT=y" >>.config
+
+    # Enable stripping of the toolchain executables
     echo "CT_STRIP_HOST_TOOLCHAIN_EXECUTABLES=y" >>.config
     echo "CT_STRIP_TARGET_TOOLCHAIN_EXECUTABLES=y" >>.config
 
+    # Increase the number of parallel jobs so that we can hopefully not be bound by I/O
+    echo "CT_PARALLEL_JOBS=$(( $(cpu_count)*2 + 1 ))" >>.config
+
     if [[ ! -z "${build_host_compile:-}" ]]; then
+        # If we're building a toolchain for a build host, build a known-good earlier version of gcc first in case the package manager version is problematic
         ${SED} -i \
             -e 's/^.*CT_GCC_V_.*$/# CT_GCC_V_???? is not set/' \
             -e 's/^.*CT_GCC_VERSION.*$/# CT_GCC_VERSION is not set/' \
@@ -227,6 +265,8 @@ function build_one() {
             .config
         echo "CT_GCC_V_12=y" >>.config
         echo "CT_GCC_VERSION=\"12.4.0\"" >>.config
+
+        # Target mingw-w64 v10 (build issues with v11+, revisit this after crosstool-ng fixes things)
         ${SED} -i \
             -e 's/^.*CT_MINGW_W64_V_.*$/# CT_MINGW_W64_V_???? is not set/' \
             -e 's/^.*CT_MINGW_W64_VERSION.*$/# CT_MINGW_W64_VERSION is not set/' \
@@ -235,8 +275,9 @@ function build_one() {
         echo "CT_MINGW_W64_VERSION=\"v10.0.0\"" >>.config
     fi
 
-    ct-ng olddefconfig
+    ct_ng_olddefconfig
 
+    # Disable the progress bar and other unnecessary features
     ${SED} -i \
         -e '/CT_LOG_PROGRESS_BAR/s/y$/n/' \
         -e 's/^.*CT_PREFIX_DIR_RO.*$/CT_PREFIX_DIR_RO=n/' \
@@ -249,7 +290,10 @@ function build_one() {
         -e 's@^.*CT_LOCAL_TARBALLS_DIR.*$@CT_LOCAL_TARBALLS_DIR="'"$script_dir/tarballs"'"@' \
         .config
 
-    # Swap to an older version of Linux to avoid issues with older distros, especially things like older Debian with Raspberry Pi targets.
+    # GDB's TUI causes issues with the build, so disable it.
+    echo 'CT_GDB_CROSS_EXTRA_CONFIG_ARRAY="--disable-tui"' >>.config # see https://github.com/crosstool-ng/crosstool-ng/issues/321
+
+    # Swap to an older version of Linux (LTS) and glibc to avoid execution issues with older distros, especially things like older Debian with Raspberry Pi targets.
     ${SED} -i \
         -e 's/^.*CT_LINUX_V_.*$/# CT_LINUX_V_???? is not set/' \
         -e 's/^.*CT_LINUX_VERSION.*$/CT_LINUX_VERSION="4.19"/' \
@@ -259,7 +303,12 @@ function build_one() {
     echo unset CT_GLIBC_KERNEL_VERSION_NONE >>.config
     echo CT_GLIBC_KERNEL_VERSION_AS_HEADERS=y >>.config
     echo CT_GLIBC_MIN_KERNEL="\${CT_LINUX_VERSION}" >>.config
-    ct-ng olddefconfig
+
+    # Pin to ncurses 6.4 as 6.5 is broken - see https://github.com/crosstool-ng/crosstool-ng/issues/2292
+    echo CT_NCURSES_V_6_4=y >>.config
+    echo 'CT_NCURSES_VERSION="6.4"' >>.config
+
+    ct_ng_olddefconfig
 
     # Disable unnecessary languages
     echo "CT_CC_LANG_FORTRAN=n" >>.config
@@ -276,45 +325,50 @@ function build_one() {
     echo "# CT_CC_LANG_OBJCXX is not set" >>.config
     echo "CT_CC_LANG_GOLANG=n" >>.config
     echo "# CT_CC_LANG_GOLANG is not set" >>.config
-    ct-ng olddefconfig
+    ct_ng_olddefconfig
 
+    # Ensure we aren't attempting an incompatible configuration between plugins and a static toolchain
     if [[ ! -z "${binutils_plugins:-}" ]] && [[ ! -z "${static_toolchain:-}" ]]; then
         echo "Cannot use \`--binutils-plugins\` and \`--static-toolchain\` together." >&2
         exit 1
     fi
 
+    # Enable binutils plugins if requested
     if [[ ! -z "${binutils_plugins:-}" ]]; then
         echo "CT_BINUTILS_PLUGINS=y" >>.config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Enable static linking if requested
     if [[ ! -z "${static_toolchain:-}" ]]; then
         ${SED} -i \
             -e 's/^.*CT_STATIC_TOOLCHAIN.*$/CT_STATIC_TOOLCHAIN=y/' \
             -e 's/^.*CT_WANTS_STATIC_LINK.*$/CT_WANTS_STATIC_LINK=y/' \
             -e 's/^.*CT_WANTS_STATIC_LINK_CXX.*$/CT_WANTS_STATIC_LINK_CXX=y/' \
             .config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Configure the required C library
     if [[ ! -z "${libc:-}" ]]; then
         echo "CT_LIBC_$(echo $libc | tr 'a-z' 'A-Z')=y" >>.config
         echo "CT_LIBC=\"$(echo $libc | tr 'A-Z' 'a-z')\"" >>.config
         echo 'CT_COMP_LIBS_NEWLIB_NANO=n' >>.config
         echo 'CT_COMP_LIBS_PICOLIBC=n' >>.config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
 
         if [[ "${libc}" == "newlib" ]]; then
             ${SED} -i \
                 -e 's/^.*CT_LIBC_NEWLIB_DISABLE_SUPPLIED_SYSCALLS.*$/CT_LIBC_NEWLIB_DISABLE_SUPPLIED_SYSCALLS=n/' \
                 .config
         fi
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Enable newlib-nano if requested
     if [[ ! -z "${extra_newlib_nano:-}" ]]; then
         echo 'CT_COMP_LIBS_NEWLIB_NANO=y' >>.config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
         ${SED} -i \
             -e 's/^.*CT_LIBC_NEWLIB_EXTRA_SECTIONS.*$/CT_LIBC_NEWLIB_EXTRA_SECTIONS=y/' \
             -e 's/^.*CT_LIBC_NEWLIB_NANO_MALLOC.*$/CT_LIBC_NEWLIB_NANO_MALLOC=y/' \
@@ -322,40 +376,45 @@ function build_one() {
             -e 's/^.*CT_NEWLIB_NANO_INSTALL_IN_TARGET.*$/CT_NEWLIB_NANO_INSTALL_IN_TARGET=y/' \
             -e 's/^.*CT_LIBC_NEWLIB_NANO_EXTRA_SECTIONS.*$/CT_LIBC_NEWLIB_NANO_EXTRA_SECTIONS=y/' \
             .config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Enable picolibc if requested
     if [[ ! -z "${extra_picolibc:-}" ]]; then
         echo 'CT_COMP_LIBS_PICOLIBC=y' >>.config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
         ${SED} -i \
             -e 's/^.*CT_PICOLIBC_INSTALL_IN_TARGET.*$/CT_PICOLIBC_INSTALL_IN_TARGET=y/' \
             -e 's/^.*CT_LIBC_PICOLIBC_GCC_LIBSTDCXX.*$/CT_LIBC_PICOLIBC_GCC_LIBSTDCXX=y/' \
             .config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Set the list of multilib targets
     if [[ ! -z "${multilib_list:-}" ]]; then
         ${SED} -i \
             -e 's/^.*CT_CC_GCC_MULTILIB_LIST.*$/CT_CC_GCC_MULTILIB_LIST="'$multilib_list'"/' \
             .config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Override the vendor name string
     if [[ ! -z "${vendor_name:-}" ]]; then
         ${SED} -i \
             -e 's/^.*CT_TARGET_VENDOR.*$/CT_TARGET_VENDOR="'$vendor_name'"/' \
             .config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Disable python for cross-compile GDB if necessary
     if [[ ! -z "${no_cross_gdb_python:-}" ]]; then
         ${SED} -i \
             -e 's/^.*CT_GDB_CROSS_PYTHON.*$/# CT_GDB_CROSS_PYTHON is not set/' \
             .config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
 
+    # Enable canadian builds if requested
     if [[ ! -z "${canadian_host:-}" ]]; then
         ${SED} -i \
             -e 's/^.*CT_CROSS.*$/# CT_CROSS is not set/' \
@@ -364,7 +423,17 @@ function build_one() {
             .config
 
         echo "CT_HOST=\"${canadian_host}\"" >>.config
-        ct-ng olddefconfig
+
+        if [[ ! -z "$(echo ${canadian_host} | grep mingw32)" ]]; then
+            # Fixup Windows builds:
+            # - see https://stackoverflow.com/a/79252672
+            # - see https://github.com/crosstool-ng/crosstool-ng/issues/2258
+            #echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--disable-host-shared --disable-win32-utf8-manifest\"" >>.config
+            echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--disable-win32-utf8-manifest\"" >>.config
+            echo "# CT_LIBC_GLIBC is not set" >>.config
+        fi
+
+        ct_ng_olddefconfig
     fi
 
     if [[ ! -z "$(echo $sample_name | grep linux)" ]]; then
@@ -373,26 +442,44 @@ function build_one() {
         ${SED} -i \
             -e 's/^.*CT_GLIBC_V_.*$/# CT_GLIBC_V_???? is not set/' \
             .config
-        echo CT_GLIBC_V_2_28=y >>.config
-        ct-ng olddefconfig
+        echo "CT_GLIBC_V_2_28=y" >>.config
+        echo "CT_GLIBC_OLDEST_ABI=\"2.28\"" >>.config
+        echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--with-glibc-version=2.28\"" >>.config
+        ct_ng_olddefconfig
     fi
 
+    # Set the toolchain output directory
     ${SED} -i \
         -e 's@^.*CT_PREFIX_DIR=.*$@CT_PREFIX_DIR="'${toolchain_dir}'"@' \
         .config
 
+    # Enable debug options
     echo "CT_DEBUG_CT=y" >>.config
-    ct-ng olddefconfig
+    ct_ng_olddefconfig
+    # Save the build steps so that we can save/restore on GHA due to build execution time limits
     echo "CT_DEBUG_CT_SAVE_STEPS=y" >>.config
     echo "CT_DEBUG_CT_SAVE_STEPS_GZIP=y" >>.config
-    ct-ng olddefconfig
+    ct_ng_olddefconfig
+    # Set the toolchain version string
     echo "CT_TOOLCHAIN_PKGVERSION=\"qmk/qmk_toolchains @ $(git rev-parse --short HEAD)\"" >>.config
-    ct-ng olddefconfig
+    ct_ng_olddefconfig
 
-    if [[ ! -z "${tools_prefix:-}" ]]; then
+    if [[ -n "${tools_prefix:-}" ]]; then
+        # Set the tools prefix
         echo "CT_BUILD_PREFIX=\"${tools_prefix}\"" >>.config
-        ct-ng olddefconfig
+        ct_ng_olddefconfig
     fi
+
+    # Save a copy of the "cut-down" config for inspection purposes.
+    ct-ng savedefconfig
+    echo ================================================================================================
+    echo == begin defconfig =============================================================================
+    echo ================================================================================================
+    cat defconfig
+    echo ================================================================================================
+    echo == end defconfig ===============================================================================
+    echo ================================================================================================
+    echo
 
     # Add the other compilers to the PATH for use in canadian builds
     while read bindir; do
@@ -413,12 +500,17 @@ function build_one() {
         positional_args+=(build)
     fi
 
+    export MACOSX_DEPLOYMENT_TARGET=12.0
     if [[ ${#positional_args[@]} -eq 1 ]] && [[ "${positional_args[0]}" == "source" ]]; then
         ct-ng source || true
     else
-        $script_dir/build-stats.sh &
-        STATS_PID=$!
-        ct-ng ${positional_args[@]}
-        kill $STATS_PID
+        nice -n 10 ct-ng ${positional_args[@]}
+
+        # Sign macOS executables
+        if [ -n "$(echo $toolchain_dir | grep macos)" ] ; then
+            find $toolchain_dir -type f -executable | while read file ; do
+                rcodesign sign --runtime-version 12.0.0 --code-signature-flags runtime "$file" || true
+            done
+        fi
     fi
 }

@@ -11,7 +11,7 @@ build_one_help "$@"
 respawn_docker_if_needed "$@"
 
 build_one \
-    --canadian-host=x86_64-w64-mingw32 \
+    --canadian-host=x86_64-apple-darwin24 \
     --sample-name=arm-none-eabi \
     --multilib-list=rmprofile \
     --libc=newlib \

@@ -11,11 +11,8 @@ build_one_help "$@"
 respawn_docker_if_needed "$@"
 
 build_one \
-    --canadian-host=x86_64-w64-mingw32 \
-    --sample-name=arm-none-eabi \
-    --multilib-list=rmprofile \
-    --libc=newlib \
+    --sample-name=avr \
+    --canadian-host=riscv64-unknown-linux-gnu \
     --binutils-plugins \
-    --extra-newlib-nano \
     --no-cross-gdb-python \
     "$@"

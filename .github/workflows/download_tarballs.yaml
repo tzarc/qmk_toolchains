@@ -1,0 +1,50 @@
+---
+name: "(internal) Download tarballs"
+
+on:
+  workflow_call:
+
+env:
+  TC_WORKDIR: '/t'
+  EXECUTE_UNDER_DOCKER: true
+
+jobs:
+  tarballs:
+    # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
+    if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
+
+    name: "Download required tarballs"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Setup docker workspace"
+        run: |
+          sudo mkdir $TC_WORKDIR
+          sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
+
+      - name: "Clone toolchains repo"
+        uses: actions/checkout@v4
+
+      - name: Cache check
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            tarballs.tar.zst
+          key: cache-tarballs-${{ hashFiles('.github/workflows/**', '*.sh', 'Dockerfile*', 'common.bashinc') }}
+
+      - name: "Gather source tarballs"
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -x
+          # Clear out the tools prefix so we can run everything, even without a bootstrap compiler present
+          for f in $(ls -1 *.sh | grep -E '(native|canadian)'); do
+            ./$f --tools-prefix= source --container-image=ghcr.io/tzarc/qmk_toolchains:base
+          done
+          tar acvf tarballs.tar.zst tarballs
+
+      - name: "Upload source tarballs"
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarballs
+          path: tarballs.tar.zst

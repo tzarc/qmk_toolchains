@@ -21,7 +21,7 @@ jobs:
           - runner: linuxX64
             host_labels: '["ubuntu-latest"]'
           - runner: macosX64
-            host_labels: '["macos-12"]'
+            host_labels: '["macos-13"]'
           - runner: macosARM64
             host_labels: '["macos-14"]'
 
@@ -163,7 +163,7 @@ jobs:
           - build_host: linuxX64
             runner_labels_json: '["ubuntu-latest"]'
           - build_host: macosX64
-            runner_labels_json: '["macos-12"]'
+            runner_labels_json: '["macos-13"]'
           - build_host: macosARM64
             runner_labels_json: '["macos-14"]'
           - target_host: baremetalARM

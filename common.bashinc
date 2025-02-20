@@ -364,11 +364,6 @@ function build_one() {
             .config
 
         echo "CT_HOST=\"${canadian_host}\"" >>.config
-
-        if [[ ! -z "$(echo ${canadian_host} | grep mingw32)" ]]; then
-            echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--disable-host-shared\"" >>.config
-        fi
-
         ct-ng olddefconfig
     fi
 

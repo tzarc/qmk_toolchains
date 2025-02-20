@@ -3,7 +3,8 @@ name: Create Toolchains
 
 env:
   # this _should_  be `master`, but recently it's been broken on Windows canadian builds. This ref is the last-known-good ref of crosstool-ng for QMK.
-  CROSSTOOL_REPO_REF: ed12fa68402f58e171a6f79500f73f4781fdc9e5
+  CROSSTOOL_REPO_REF: 63fdc9cb3735aa8da4381f0a59169e55a8590d11
+  EXECUTE_UNDER_DOCKER: "true"
 
 on:
   workflow_dispatch:
@@ -35,7 +36,7 @@ jobs:
         with:
           repository: crosstool-ng/crosstool-ng
           ref: ${{ env.CROSSTOOL_REPO_REF }}
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: "Host info"
         run: |
@@ -78,33 +79,32 @@ jobs:
     if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
 
     name: "Download required tarballs"
-    needs: [crosstool]
     runs-on: ubuntu-latest
 
     steps:
+      - name: "Setup docker workspace"
+        run: |
+          sudo mkdir /t
+          sudo mount --bind $GITHUB_WORKSPACE /t
+          echo "TC_WORKDIR=/t" >> $GITHUB_ENV
+          echo "EXECUTE_UNDER_DOCKER=1" >> $GITHUB_ENV
+
       - name: "Clone toolchains repo"
         uses: actions/checkout@v4
 
-      - name: "Download copy of crosstool-ng"
-        uses: actions/download-artifact@v4
-        with:
-          name: crosstool.linuxX64
-
-      - name: "Extract copy of crosstool-ng"
-        run: |
-          tar xf ct-ng.tar -C $HOME
-
-      - name: "Prerequisites (Linux)"
-        if: ${{ runner.os == 'Linux' }}
-        run: |
-          sudo apt-get install -y gperf help2man libtool-bin
-          echo "$HOME/.local/crosstool-ng/bin" >> $GITHUB_PATH
-
       - name: "Gather source tarballs"
         run: |
+          set -x
+          # Pre-build the container
+          ./prepare_docker_image.sh --build-arg CROSSTOOL_REPO_REF=${{ env.CROSSTOOL_REPO_REF }}
           # Clear out the tools prefix so we can run everything, even without a bootstrap compiler present
-          for f in $(ls aarch64*.sh arm*.sh avr*.sh riscv32*.sh win64*.sh x64linux*.sh); do ./$f --tools-prefix= source; done
+          for f in $(ls -1 *.sh | grep -E '(native|canadian)'); do 
+            ./$f --tools-prefix= source
+          done
           tar cvf tarballs.tar tarballs
+        env:
+          CROSSTOOL_REPO_REF: ${{ env.CROSSTOOL_REPO_REF }}
+          TC_WORKDIR: /t
 
       - name: "Upload source tarballs"
         uses: actions/upload-artifact@v4
@@ -118,7 +118,7 @@ jobs:
     if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
 
     name: "Build bootstrap linuxX64 toolchain"
-    needs: [tarballs]
+    needs: [crosstool, tarballs]
     uses: ./.github/workflows/create_one_toolchain.yaml
     with:
       runner_labels_json: '["ubuntu-latest"]'
@@ -306,7 +306,7 @@ jobs:
         run: |
           for dir in $(ls -d toolchains/*${{ matrix.target_host }}); do
             echo "Stripping toolchain in $dir"
-            ./strip-toolchain.sh $dir
+            ./strip_toolchain.sh $dir
           done
 
       - name: Repack toolchains

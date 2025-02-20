@@ -1,6 +1,10 @@
 ---
 name: Create Toolchains
 
+env:
+  # this _should_  be `master`, but recently it's been broken on Windows canadian builds. This ref is the last-known-good ref of crosstool-ng for QMK.
+  CROSSTOOL_REPO_REF: ed12fa68402f58e171a6f79500f73f4781fdc9e5
+
 on:
   workflow_dispatch:
 
@@ -30,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: crosstool-ng/crosstool-ng
-          ref: master
+          ref: ${{ env.CROSSTOOL_REPO_REF }}
           fetch-depth: 0
 
       - name: "Host info"

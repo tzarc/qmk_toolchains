@@ -31,7 +31,7 @@ jobs:
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       host_exec_prefix: ${{ inputs.host_exec_prefix }}
       brew_path: ${{ inputs.brew_path }}
-      crosstool_args: 'build STOP=cc_for_build'
+      crosstool_args: 'build STOP=cc_core'
       restore_state: false
       phase_number: 1
 
@@ -50,7 +50,7 @@ jobs:
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       host_exec_prefix: ${{ inputs.host_exec_prefix }}
       brew_path: ${{ inputs.brew_path }}
-      crosstool_args: 'build RESTART=cc_for_host STOP=libc_post_cc'
+      crosstool_args: 'build RESTART=libc_main STOP=cc_for_build'
       phase_number: 2
 
   phase3:
@@ -68,7 +68,7 @@ jobs:
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       host_exec_prefix: ${{ inputs.host_exec_prefix }}
       brew_path: ${{ inputs.brew_path }}
-      crosstool_args: 'build RESTART=companion_libs_for_target STOP=companion_libs_for_target'
+      crosstool_args: 'build RESTART=cc_for_host STOP=libc_post_cc'
       phase_number: 3
 
   phase4:
@@ -86,14 +86,32 @@ jobs:
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       host_exec_prefix: ${{ inputs.host_exec_prefix }}
       brew_path: ${{ inputs.brew_path }}
-      crosstool_args: 'build RESTART=binutils_for_target'
-      save_state: false
-      toolchain_tarball: true
+      crosstool_args: 'build RESTART=companion_libs_for_target STOP=companion_libs_for_target'
       phase_number: 4
 
   phase5:
     name: Build toolchain (phase 5)
     needs: [phase4]
+    uses: ./.github/workflows/invoke_crosstool.yaml
+    with:
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+      crosstool_host_os: ${{ inputs.crosstool_host_os }}
+      build_host: ${{ inputs.build_host }}
+      target_host: ${{ inputs.target_host }}
+      build_script: ${{ inputs.build_script }}
+      canadian_build: ${{ inputs.canadian_build }}
+      fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
+      toolchain_suffix: ${{ inputs.toolchain_suffix }}
+      host_exec_prefix: ${{ inputs.host_exec_prefix }}
+      brew_path: ${{ inputs.brew_path }}
+      crosstool_args: 'build RESTART=binutils_for_target'
+      save_state: false
+      toolchain_tarball: true
+      phase_number: 5
+
+  phase6:
+    name: Build toolchain (phase 6)
+    needs: [phase5]
     runs-on: ubuntu-latest
 
     steps:

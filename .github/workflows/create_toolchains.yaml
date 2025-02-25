@@ -25,10 +25,16 @@ jobs:
         include:
           - runner: linuxX64
             host_labels: '["ubuntu-latest"]'
+            host_exec_prefix: ''
+            brew_path: ''
           - runner: macosX64
-            host_labels: '["macos-13"]'
+            host_labels: '["macos-14"]'
+            host_exec_prefix: 'arch -x86_64'
+            brew_path: '/usr/local'
           - runner: macosARM64
             host_labels: '["macos-14"]'
+            host_exec_prefix: ''
+            brew_path: '/opt/homebrew'
 
     steps:
       - name: "Clone crosstool-ng repo"
@@ -50,22 +56,23 @@ jobs:
       - name: "Prerequisites (macOS)"
         if: ${{ runner.os == 'macOS' }}
         run: |
-          brew install autoconf automake bash binutils coreutils gawk gnu-sed help2man libtool make meson ncurses pkg-config python3 texinfo
+          export PATH="${{ matrix.brew_path }}/bin:$PATH"
+          ${{ matrix.host_exec_prefix }} /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)" || true
+          eval "$(${{ matrix.brew_path }}/bin/brew shellenv)"
+          ${{ matrix.host_exec_prefix }} brew install autoconf automake bash binutils coreutils gawk gnu-sed help2man libtool make meson ncurses ninja pkg-config python3 texinfo || true
 
       - name: "Build crosstool-ng"
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
-            export PATH="$PATH:/usr/local/opt/binutils/bin:/usr/local/opt/coreutils/bin:/usr/local/opt/libtool/libexec/gnubin"
-            export CPPFLAGS="-I/usr/local/opt/ncurses/include -I/usr/local/opt/gettext/include"
-            export LDFLAGS="-L/usr/local/opt/ncurses/lib -L/usr/local/opt/gettext/lib"
-            export PATH="$PATH:/opt/homebrew/opt/binutils/bin:/opt/homebrew/opt/coreutils/bin:/opt/homebrew/opt/libtool/libexec/gnubin"
-            export CPPFLAGS="$CPPFLAGS -I/opt/homebrew/opt/ncurses/include -I/opt/homebrew/opt/gettext/include"
-            export LDFLAGS="$LDFLAGS -L/opt/homebrew/opt/ncurses/lib -L/opt/homebrew/opt/gettext/lib"
+            eval "$(${{ matrix.brew_path }}/bin/brew shellenv)"
+            export PATH="${{ matrix.brew_path }}/bin:$PATH:${{ matrix.brew_path }}/opt/binutils/bin:${{ matrix.brew_path }}/opt/coreutils/bin:${{ matrix.brew_path }}/opt/libtool/libexec/gnubin"
+            export CPPFLAGS="-I${{ matrix.brew_path }}/opt/ncurses/include -I${{ matrix.brew_path }}/opt/gettext/include"
+            export LDFLAGS="-L${{ matrix.brew_path }}/opt/ncurses/lib -L${{ matrix.brew_path }}/opt/gettext/lib"
           fi
-          ./bootstrap
-          ./configure --prefix=$HOME/.local/crosstool-ng
-          make
-          make install
+          ${{ matrix.host_exec_prefix }} ./bootstrap
+          ${{ matrix.host_exec_prefix }} ./configure --prefix=$HOME/.local/crosstool-ng
+          ${{ matrix.host_exec_prefix }} make
+          ${{ matrix.host_exec_prefix }} make install
           tar cf ct-ng.tar -C $HOME .local/
 
       - name: "Upload crosstool-ng"
@@ -98,7 +105,7 @@ jobs:
           # Pre-build the container
           ./prepare_docker_image.sh --build-arg CROSSTOOL_REPO_REF=${{ env.CROSSTOOL_REPO_REF }}
           # Clear out the tools prefix so we can run everything, even without a bootstrap compiler present
-          for f in $(ls -1 *.sh | grep -E '(native|canadian)'); do 
+          for f in $(ls -1 *.sh | grep -E '(native|canadian)'); do
             ./$f --tools-prefix= source
           done
           tar cvf tarballs.tar tarballs
@@ -167,9 +174,13 @@ jobs:
           - build_host: linuxX64
             runner_labels_json: '["ubuntu-latest"]'
           - build_host: macosX64
-            runner_labels_json: '["macos-13"]'
+            runner_labels_json: '["macos-14"]'
+            host_exec_prefix: 'arch -x86_64'
+            brew_path: '/usr/local'
           - build_host: macosARM64
             runner_labels_json: '["macos-14"]'
+            host_exec_prefix: ''
+            brew_path: '/opt/homebrew'
           - target_host: baremetalARM
             build_script: arm-native.sh
           - target_host: baremetalAVR
@@ -183,6 +194,8 @@ jobs:
       build_host: ${{ matrix.build_host }}
       target_host: ${{ matrix.target_host }}
       build_script: ${{ matrix.build_script }}
+      host_exec_prefix: ${{ matrix.host_exec_prefix }}
+      brew_path: ${{ matrix.brew_path }}
 
   canadian-toolchains:
     # only actually execute on @tzarc's repo so as to not lock up QMK org's resources

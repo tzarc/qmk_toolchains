@@ -17,6 +17,8 @@ on:
       restore_state: { type: boolean, required: false, default: true }
       save_state: { type: boolean, required: false, default: true }
       toolchain_tarball: { type: boolean, required: false, default: false }
+      host_exec_prefix: { type: string, required: false, default: "" }
+      brew_path: { type: string, required: false, default: "" }
 
 jobs:
   invoke-crosstool:
@@ -33,7 +35,10 @@ jobs:
       - name: Prerequisites (macOS)
         if: ${{ runner.os == 'macOS' }}
         run: |
-          brew install autoconf automake bash binutils coreutils gawk gnu-sed help2man make meson ncurses pkg-config python3
+          export PATH="${{ inputs.brew_path }}/bin:$PATH"
+          ${{ inputs.host_exec_prefix }} /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)" || true
+          eval "$(${{ inputs.brew_path }}/bin/brew shellenv)"
+          ${{ inputs.host_exec_prefix }} brew install autoconf automake bash binutils coreutils gawk gnu-sed help2man libtool make meson ncurses ninja pkg-config python3 texinfo || true
           echo "$HOME/.local/crosstool-ng/bin" >> $GITHUB_PATH
 
       - name: Show disk space available - before
@@ -163,17 +168,15 @@ jobs:
         run: |
           cd $TC_WORKDIR
           if [ "$RUNNER_OS" == "macOS" ]; then
-            export PATH="$PATH:/usr/local/opt/binutils/bin:/usr/local/opt/coreutils/bin:/usr/local/opt/libtool/libexec/gnubin"
-            export CPPFLAGS="-I/usr/local/opt/ncurses/include -I/usr/local/opt/gettext/include"
-            export LDFLAGS="-L/usr/local/opt/ncurses/lib -L/usr/local/opt/gettext/lib"
-            export PATH="$PATH:/opt/homebrew/opt/binutils/bin:/opt/homebrew/opt/coreutils/bin:/opt/homebrew/opt/libtool/libexec/gnubin"
-            export CPPFLAGS="$CPPFLAGS -I/opt/homebrew/opt/ncurses/include -I/opt/homebrew/opt/gettext/include"
-            export LDFLAGS="$LDFLAGS -L/opt/homebrew/opt/ncurses/lib -L/opt/homebrew/opt/gettext/lib"
+            eval "$(${{ inputs.brew_path }}/bin/brew shellenv)"
+            export PATH="${{ inputs.brew_path }}/bin:$PATH:${{ inputs.brew_path }}/opt/binutils/bin:${{ inputs.brew_path }}/opt/coreutils/bin:${{ inputs.brew_path }}/opt/libtool/libexec/gnubin"
+            export CPPFLAGS="-I${{ inputs.brew_path }}/opt/ncurses/include -I${{ inputs.brew_path }}/opt/gettext/include"
+            export LDFLAGS="-L${{ inputs.brew_path }}/opt/ncurses/lib -L${{ inputs.brew_path }}/opt/gettext/lib"
             # Prefer to target Monterey
             export MACOSX_DEPLOYMENT_TARGET=12.0
           fi
           # Kick off the requested build phase (kill after 5h45m so logs can be gathered)
-          timeout 19800 ./${{ inputs.build_script }} ${{ inputs.crosstool_args }}
+          timeout 19800 ${{ inputs.host_exec_prefix }} ./${{ inputs.build_script }} ${{ inputs.crosstool_args }}
           find . \( -name \*.log \) -print0 | xargs -0 tar cvf build_logs.tar
 
       - name: Upload build logs
@@ -209,7 +212,7 @@ jobs:
         if: ${{ inputs.toolchain_tarball }}
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
-            export PATH="$PATH:/usr/local/opt/coreutils/bin"
+            export PATH="$PATH:${{ inputs.brew_path }}/opt/coreutils/bin"
             export STAT="gstat"
           else
             export STAT="stat"

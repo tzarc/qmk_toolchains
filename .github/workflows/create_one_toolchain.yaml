@@ -12,6 +12,8 @@ on:
       canadian_build: { type: boolean, required: false, default: false }
       fetch_bootstrap: { type: boolean, required: false, default: true }
       toolchain_suffix: { type: string, required: false, default: "" }
+      host_exec_prefix: { type: string, required: false, default: "" }
+      brew_path: { type: string, required: false, default: "" }
 
 jobs:
   # Split up the build as compiling newlib/libstdc++ targeting ARM takes so damn long.
@@ -27,6 +29,8 @@ jobs:
       canadian_build: ${{ inputs.canadian_build }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
+      host_exec_prefix: ${{ inputs.host_exec_prefix }}
+      brew_path: ${{ inputs.brew_path }}
       crosstool_args: 'build STOP=cc_for_build'
       restore_state: false
       phase_number: 1
@@ -44,6 +48,8 @@ jobs:
       canadian_build: ${{ inputs.canadian_build }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
+      host_exec_prefix: ${{ inputs.host_exec_prefix }}
+      brew_path: ${{ inputs.brew_path }}
       crosstool_args: 'build RESTART=cc_for_host STOP=libc_post_cc'
       phase_number: 2
 
@@ -60,6 +66,8 @@ jobs:
       canadian_build: ${{ inputs.canadian_build }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
+      host_exec_prefix: ${{ inputs.host_exec_prefix }}
+      brew_path: ${{ inputs.brew_path }}
       crosstool_args: 'build RESTART=companion_libs_for_target STOP=companion_libs_for_target'
       phase_number: 3
 
@@ -76,6 +84,8 @@ jobs:
       canadian_build: ${{ inputs.canadian_build }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
+      host_exec_prefix: ${{ inputs.host_exec_prefix }}
+      brew_path: ${{ inputs.brew_path }}
       crosstool_args: 'build RESTART=binutils_for_target'
       save_state: false
       toolchain_tarball: true

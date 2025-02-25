@@ -56,6 +56,7 @@ jobs:
       - name: "Prerequisites (macOS)"
         if: ${{ runner.os == 'macOS' }}
         run: |
+          /usr/sbin/softwareupdate --install-rosetta --agree-to-license
           export PATH="${{ matrix.brew_path }}/bin:$PATH"
           ${{ matrix.host_exec_prefix }} /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)" || true
           eval "$(${{ matrix.brew_path }}/bin/brew shellenv)"

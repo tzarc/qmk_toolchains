@@ -241,8 +241,8 @@ function build_one() {
     echo "CT_STRIP_HOST_TOOLCHAIN_EXECUTABLES=y" >>.config
     echo "CT_STRIP_TARGET_TOOLCHAIN_EXECUTABLES=y" >>.config
 
-    # Use one less CPU than the core count as GHA runners seem to occasionally die when the runner app is starved by the gcc build
-    echo "CT_PARALLEL_JOBS=$(( $(cpu_count) - 1 ))" >>.config
+    # Increase the number of parallel jobs so that we can hopefully not be bound by I/O
+    echo "CT_PARALLEL_JOBS=$(( $(cpu_count)*2 + 1 ))" >>.config
 
     if [[ ! -z "${build_host_compile:-}" ]]; then
         # If we're building a toolchain for a build host, build a known-good earlier version of gcc first in case the package manager version is problematic
@@ -496,6 +496,6 @@ function build_one() {
     if [[ ${#positional_args[@]} -eq 1 ]] && [[ "${positional_args[0]}" == "source" ]]; then
         ct-ng source || true
     else
-        ct-ng ${positional_args[@]}
+        nice -n 10 ct-ng ${positional_args[@]}
     fi
 }

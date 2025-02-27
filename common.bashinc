@@ -10,16 +10,11 @@ export SDK_VERSION=15.0
 function respawn_docker_if_needed() {
     if [[ "$(uname -s)" == "Linux" ]] && [[ -n "${EXECUTE_UNDER_DOCKER:-}" ]]; then
         cd "$script_dir"
-        if [[ -n "${CROSSTOOL_REPO_REF:-}" ]]; then
-            ./prepare_docker_image.sh --build-arg CROSSTOOL_REPO_REF=$CROSSTOOL_REPO_REF
-        else
-            ./prepare_docker_image.sh
-        fi
         docker run --rm \
             -v "$script_dir:$TC_WORKDIR" \
             -w "$TC_WORKDIR" \
             -e TC_WORKDIR="$TC_WORKDIR" \
-            qmk_toolchains:builder \
+            ghcr.io/tzarc/qmk_toolchains:base \
             ./$(basename $this_script) "$@"
         exit $?
     fi

@@ -1,5 +1,5 @@
 ---
-name: "(internal) Invoke `crosstool-ng`"
+name: "OLD: (internal) Invoke `crosstool-ng`"
 
 on:
   workflow_call:
@@ -26,10 +26,21 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
 
     steps:
-      - name: Prerequisites
+      - name: Prerequisites (Linux)
+        if: ${{ runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential git wget curl gperf help2man libtool-bin meson flex bison texinfo gawk libncurses-dev patchelf
+
+      - name: Prerequisites (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+          export PATH="${{ inputs.brew_path }}/bin:$PATH"
+          ${{ inputs.host_exec_prefix }} /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)" || true
+          eval "$(${{ inputs.brew_path }}/bin/brew shellenv)"
+          ${{ inputs.host_exec_prefix }} brew install autoconf automake bash binutils coreutils gawk gnu-sed help2man libtool make meson ncurses ninja pkg-config python3 texinfo || true
+          echo "$HOME/.local/crosstool-ng/bin" >> $GITHUB_PATH
 
       - name: Show disk space available - before
         run: |
@@ -47,15 +58,62 @@ jobs:
           remove-codeql: "true"
           remove-docker-images: "true"
 
-      - name: Setup workdir
+      - name: Setup workdir on Linux
+        if: ${{ runner.os == 'Linux' }}
         run: |
           sudo mkdir /t
           sudo mount --bind $GITHUB_WORKSPACE /t
           echo "TC_WORKDIR=/t" >> $GITHUB_ENV
           echo "EXECUTE_UNDER_DOCKER=1" >> $GITHUB_ENV
 
+      - name: Setup workdir everywhere else
+        if: ${{ runner.os != 'Linux' }}
+        run: |
+          echo "TC_WORKDIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Create case-sensitive workspace volume for macOS
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          cd $HOME
+          find $GITHUB_WORKSPACE -mindepth 1 -maxdepth 1 -type d -exec rm -rf '{}' \; -prune
+          find $GITHUB_WORKSPACE -type f -exec rm -rf '{}' \;
+          counter=10
+          while [[ $counter -gt 0 ]] ; do
+            if [[ -z "$(mount 2>/dev/null| grep $GITHUB_WORKSPACE)" ]]; then
+              break
+            fi
+            hdiutil detach $GITHUB_WORKSPACE -force || true
+            counter=$(( counter - 1 ))
+            sleep 15
+          done
+          counter=10
+          while [[ $counter -gt 0 ]] ; do
+            if [[ ! -z "$(mount 2>/dev/null| grep $GITHUB_WORKSPACE)" ]]; then
+              break
+            fi
+            rm -rf $HOME/Workspace.sparseimage || true
+            hdiutil create $HOME/Workspace.sparseimage -volname toolchains -type SPARSE -size 80g -fs HFSX
+            hdiutil attach $HOME/Workspace.sparseimage -mountpoint $GITHUB_WORKSPACE
+            counter=$(( counter - 1 ))
+            sleep 15
+          done
+          cd $GITHUB_WORKSPACE
+
+      - name: Show disk space available - after
+        run: |
+          df -h
+
       - name: Clone toolchains repo
         uses: actions/checkout@v4
+
+      - name: Download copy of crosstool-ng
+        uses: actions/download-artifact@v4
+        with:
+          name: crosstool.${{ inputs.crosstool_host_os }}
+
+      - name: Extract copy of crosstool-ng
+        run: |
+          tar xf ct-ng.tar -C $HOME
 
       - name: Download source tarballs
         uses: actions/download-artifact@v4
@@ -119,7 +177,7 @@ jobs:
             export MACOSX_DEPLOYMENT_TARGET=12.0
           fi
           # Kick off the requested build phase (kill after 5h45m so logs can be gathered)
-          timeout 19800 ./${{ inputs.build_script }} ${{ inputs.crosstool_args }}
+          timeout 19800 ${{ inputs.host_exec_prefix }} ./${{ inputs.build_script }} ${{ inputs.crosstool_args }}
           find . \( -name \*.log \) -print0 | xargs -0 tar cvf build_logs.tar
 
       - name: Upload build logs

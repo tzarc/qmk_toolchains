@@ -4,7 +4,6 @@ name: "(internal) Invoke `crosstool-ng`"
 on:
   workflow_call:
     inputs:
-      runner_labels_json: { type: string, required: true }
       crosstool_host_os: { type: string, required: true }
       build_host: { type: string, required: true }
       target_host: { type: string, required: true }
@@ -17,42 +16,30 @@ on:
       restore_state: { type: boolean, required: false, default: true }
       save_state: { type: boolean, required: false, default: true }
       toolchain_tarball: { type: boolean, required: false, default: false }
-      host_exec_prefix: { type: string, required: false, default: "" }
-      brew_path: { type: string, required: false, default: "" }
 
 jobs:
   invoke-crosstool:
     name: ${{ inputs.phase_number }}. ct-ng ${{ inputs.crosstool_args }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    runs-on: ubuntu-latest
+
+    env:
+      TC_WORKDIR: '/t'
+      EXECUTE_UNDER_DOCKER: true
 
     steps:
-      - name: Prerequisites
+      - name: Move docker data root to /mnt for more space
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git wget curl gperf help2man libtool-bin meson flex bison texinfo gawk libncurses-dev patchelf
-
-      - name: Show disk space available - before
-        run: |
-          df -h
-
-      - name: Maximize build space for Linux
-        uses: easimon/maximize-build-space@master
-        if: ${{ runner.os == 'Linux' }}
-        with:
-          root-reserve-mb: 2048
-          swap-size-mb: 8192
-          remove-dotnet: "true"
-          remove-android: "true"
-          remove-haskell: "true"
-          remove-codeql: "true"
-          remove-docker-images: "true"
+          DOCKER_DATA_ROOT='/mnt/var/lib/docker'
+          DOCKER_DAEMON_JSON='/etc/docker/daemon.json'
+          sudo mkdir -p "${DOCKER_DATA_ROOT}"
+          echo "{\"data-root\": \"${DOCKER_DATA_ROOT}\"}" | sudo tee "${DOCKER_DAEMON_JSON}"
+          sudo systemctl restart docker
+          sudo df -h
 
       - name: Setup workdir
         run: |
-          sudo mkdir /t
-          sudo mount --bind $GITHUB_WORKSPACE /t
-          echo "TC_WORKDIR=/t" >> $GITHUB_ENV
-          echo "EXECUTE_UNDER_DOCKER=1" >> $GITHUB_ENV
+          sudo mkdir $TC_WORKDIR
+          sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
 
       - name: Clone toolchains repo
         uses: actions/checkout@v4
@@ -67,13 +54,13 @@ jobs:
           tar xf tarballs.tar
 
       - name: Download bootstrap toolchain
-        if: ${{ inputs.fetch_bootstrap && runner.os == 'Linux' }}
+        if: ${{ inputs.fetch_bootstrap }}
         uses: actions/download-artifact@v4
         with:
           name: toolchain-host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap
 
       - name: Extract bootstrap toolchain
-        if: ${{ inputs.fetch_bootstrap && runner.os == 'Linux' }}
+        if: ${{ inputs.fetch_bootstrap }}
         run: |
           mkdir -p toolchains
           tar xf qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.xz -C toolchains
@@ -110,14 +97,6 @@ jobs:
       - name: Build toolchain
         run: |
           cd $TC_WORKDIR
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            eval "$(${{ inputs.brew_path }}/bin/brew shellenv)"
-            export PATH="${{ inputs.brew_path }}/bin:$PATH:${{ inputs.brew_path }}/opt/binutils/bin:${{ inputs.brew_path }}/opt/coreutils/bin:${{ inputs.brew_path }}/opt/libtool/libexec/gnubin"
-            export CPPFLAGS="-I${{ inputs.brew_path }}/opt/ncurses/include -I${{ inputs.brew_path }}/opt/gettext/include"
-            export LDFLAGS="-L${{ inputs.brew_path }}/opt/ncurses/lib -L${{ inputs.brew_path }}/opt/gettext/lib"
-            # Prefer to target Monterey
-            export MACOSX_DEPLOYMENT_TARGET=12.0
-          fi
           # Kick off the requested build phase (kill after 5h45m so logs can be gathered)
           timeout 19800 ./${{ inputs.build_script }} ${{ inputs.crosstool_args }}
           find . \( -name \*.log \) -print0 | xargs -0 tar cvf build_logs.tar
@@ -134,13 +113,7 @@ jobs:
         if: ${{ inputs.save_state }}
         run: |
           # We're saving state so we can resume at each step -- some of the internal build directories can be blown away as restarting from a step will recreate them.
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            export PATH="$PATH:/usr/local/opt/coreutils/bin"
-            export STAT="gstat"
-          else
-            export STAT="stat"
-          fi
-          latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r $STAT -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
+          latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r stat -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
           tar cf state-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar $latest_state
 
       - name: Upload build state
@@ -154,16 +127,10 @@ jobs:
       - name: Make toolchain tarball
         if: ${{ inputs.toolchain_tarball }}
         run: |
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            export PATH="$PATH:${{ inputs.brew_path }}/opt/coreutils/bin"
-            export STAT="gstat"
-          else
-            export STAT="stat"
-          fi
           if [[ "${{ inputs.build_host }}" == "windowsX64" ]] || [[ "${{ inputs.build_host }}" == "windowsARM64" ]]; then
             export DEREF_SYMLINKS_ARGS="--dereference --hard-dereference"
           fi
-          latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r $STAT -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
+          latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r stat -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
           source "$latest_state/env.sh"
           tar cf qmk_toolchain-gcc${CT_GCC_VERSION}-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar -C toolchains host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }} ${DEREF_SYMLINKS_ARGS:-}
           xz -T 0 -z -9 -e qmk_toolchain-gcc${CT_GCC_VERSION}-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar
@@ -175,24 +142,3 @@ jobs:
           name: toolchain-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}
           path: |
             qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.xz
-
-      - name: Unmount case-sensitive workspace volume for macOS
-        if: always()
-        run: |
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            cd $HOME
-            find $GITHUB_WORKSPACE -mindepth 1 -maxdepth 1 -type d -exec rm -rf '{}' \; -prune
-            find $GITHUB_WORKSPACE -type f -exec rm -rf '{}' \;
-
-            counter=10
-            while [[ $counter -gt 0 ]] ; do
-              if [[ -z "$(mount 2>/dev/null| grep $GITHUB_WORKSPACE)" ]]; then
-                break
-              fi
-              hdiutil detach $GITHUB_WORKSPACE -force || true
-              counter=$(( counter - 1 ))
-              sleep 15
-            done
-
-            rm -rf $HOME/Workspace.sparseimage || true
-          fi

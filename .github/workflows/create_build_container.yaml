@@ -87,3 +87,19 @@ jobs:
         with:
           name: tarballs.tar
           path: tarballs.tar
+
+  # Build a copy of linux/X64 toolchain to bootstrap the rest so that the resulting compilers are compatible with the old glibc.
+  bootstrap-linuxX64-toolchain:
+    # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
+    if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
+
+    name: "Build bootstrap linuxX64 toolchain"
+    needs: [tarballs]
+    uses: ./.github/workflows/compile_one_toolchain.yaml
+    with:
+      crosstool_host_os: linuxX64
+      build_host: linuxX64
+      target_host: linuxX64
+      build_script: x64linux-native-bootstrap.sh
+      fetch_bootstrap: false
+      toolchain_suffix: "_qmk_bootstrap"

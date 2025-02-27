@@ -4,7 +4,6 @@ name: "(internal) Compile one toolchain"
 on:
   workflow_call:
     inputs:
-      runner_labels_json: { type: string, required: true }
       crosstool_host_os: { type: string, required: true }
       build_host: { type: string, required: true }
       target_host: { type: string, required: true }
@@ -19,7 +18,6 @@ jobs:
     name: Build toolchain (phase 1)
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      runner_labels_json: ${{ inputs.runner_labels_json }}
       crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}
@@ -36,7 +34,6 @@ jobs:
     needs: [phase1]
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      runner_labels_json: ${{ inputs.runner_labels_json }}
       crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}
@@ -52,7 +49,6 @@ jobs:
     needs: [phase2]
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      runner_labels_json: ${{ inputs.runner_labels_json }}
       crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}
@@ -68,7 +64,6 @@ jobs:
     needs: [phase3]
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      runner_labels_json: ${{ inputs.runner_labels_json }}
       crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}

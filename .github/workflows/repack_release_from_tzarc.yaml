@@ -1,5 +1,5 @@
 ---
-name: Repack release from tzarc/qmk_toolchains
+name: "3. (qmk) Repack release from tzarc/qmk_toolchains"
 
 on:
   workflow_dispatch:

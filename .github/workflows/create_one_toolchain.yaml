@@ -1,5 +1,5 @@
 ---
-name: Create Toolchain
+name: "(internal) Create one toolchain"
 
 on:
   workflow_call:

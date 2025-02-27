@@ -1,5 +1,5 @@
 ---
-name: Create Toolchains
+name: "2. (tzarc) Create Toolchains"
 
 env:
   # this _should_  be `master`, but recently it's been broken on Windows canadian builds. This ref is the last-known-good ref of crosstool-ng for QMK.

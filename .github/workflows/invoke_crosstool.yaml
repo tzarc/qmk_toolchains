@@ -1,5 +1,5 @@
 ---
-name: Invoke `crosstool-ng`
+name: "(internal) Invoke `crosstool-ng`"
 
 on:
   workflow_call:

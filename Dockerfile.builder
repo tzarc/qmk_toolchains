@@ -22,7 +22,7 @@ WORKDIR /osxcross
 ARG OSX_CROSS_COMMIT
 ADD "https://github.com/tpoechtrager/osxcross.git#${OSX_CROSS_COMMIT}" .
 
-# From https://github.com/crazy-max/docker-osxcross
+# Patch osxcross -- from https://github.com/crazy-max/docker-osxcross
 COPY <<EOF lcxx.patch
 diff --git a/wrapper/target.cpp b/wrapper/target.cpp
 index 82bf65c..a2520e2 100644

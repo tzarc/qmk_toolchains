@@ -104,21 +104,77 @@ RUN OSX_VERSION_MIN=10.13 UNATTENDED=1 ENABLE_COMPILER_RT_INSTALL=1 TARGET_DIR=/
 # Build crosstool-ng
 FROM build-osxcross AS build-crosstool-ng
 ARG CROSSTOOL_REPO_REF
-
 RUN git clone https://github.com/crosstool-ng/crosstool-ng.git /tmp/crosstool-ng \
     && cd /tmp/crosstool-ng \
     && git checkout --progress --force $CROSSTOOL_REPO_REF \
     && ./bootstrap \
-    && ./configure --prefix=/usr/local \
+    && ./configure --prefix=/ct-ng \
     && make -j$(nproc) \
-    && make install \
-    && cd / \
-    && rm -rf /tmp/crosstool-ng
+    && make install
 
-# Configure bootstrap image
-FROM build-crosstool-ng AS bootstrap
+# Final image
+FROM ubuntu:noble AS final
+RUN export DEBIAN_FRONTEND="noninteractive" \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    apt-transport-https \
+    autoconf \
+    automake \
+    bash \
+    binutils-multiarch-dev \
+    bison \
+    build-essential \
+    ca-certificates \
+    clang \
+    cmake \
+    curl \
+    flex \
+    gawk \
+    git \
+    gperf \
+    help2man \
+    libbz2-dev \
+    libc6-dev \
+    libgmp-dev \
+    liblzma-dev \
+    libmpc-dev \
+    libmpfr-dev \
+    libncurses-dev \
+    libpsi3-dev \
+    libssl-dev \
+    libtool \
+    libtool-bin \
+    libxml2-dev \
+    libz-dev \
+    lld \
+    lzma-dev \
+    make \
+    meson \
+    patch \
+    patchelf \
+    python3 \
+    sudo \
+    texinfo \
+    unzip \
+    uuid-dev \
+    wget \
+    xz-utils \
+    zlib1g-dev
+
+# Copy across the base image compilers and SDKs
+COPY --from=build-crosstool-ng /ct-ng /ct-ng
+COPY --from=build-crosstool-ng /osxcross /osxcross
+COPY --from=build-crosstool-ng /gcc /gcc
+COPY --from=build-crosstool-ng /cctools /cctools
+COPY --from=build-crosstool-ng /sdk /sdk
+COPY --from=build-crosstool-ng /usr/local /usr/local
+
+# Remove the ubuntu user and group
 USER 0:0
 RUN userdel ubuntu || true && groupdel ubuntu || true
+
+# Ensure search paths for libraries are up to date
+RUN rm /etc/ld.so.cache && ldconfig
 
 # Runtime shell init script to ensure the user is created with the correct UID/GID for the mountpoint
 COPY <<EOF /init.sh
@@ -130,14 +186,14 @@ groupadd --non-unique -g \$qmk_gid qmk
 useradd --non-unique -u \$qmk_uid -g \$qmk_gid -N qmk
 echo "qmk ALL=(ALL) NOPASSWD:ALL" | tee /etc/sudoers.d/qmk >/dev/null 2>&1
 cd \$TC_WORKDIR
-export PATH="/cctools/bin:/gcc/bin:/osxcross/binutils/bin:/osxcross/bin:\$PATH" # this must have `/cctools/bin:/gcc/bin` on \$PATH before osxcross equivalent
+export PATH="/ct-ng/bin:/cctools/bin:/gcc/bin:/osxcross/binutils/bin:/osxcross/bin:\$PATH" # this must have `/cctools/bin:/gcc/bin` on \$PATH before osxcross equivalent
 if [[ -n \$1 ]]; then
     sudo -u qmk -g qmk -H --preserve-env=PATH -- bash -lic "exec \$*"
 else
     sudo -u qmk -g qmk -H --preserve-env=PATH -- bash -li
 fi
 EOF
-
 RUN chmod +x /init.sh
+
 ENTRYPOINT ["/init.sh"]
 CMD ["bash"]

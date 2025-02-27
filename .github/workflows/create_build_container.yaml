@@ -1,0 +1,38 @@
+---
+name: Create Build Container
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  base_container:
+    # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
+    if: github.repository == 'tzarc/qmk_toolchains'
+
+    name: "Build base container"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Clone toolchains repo"
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.builder
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/tzarc/qmk_toolchains:base

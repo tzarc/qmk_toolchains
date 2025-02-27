@@ -1,4 +1,9 @@
+# syntax=docker/dockerfile:1
+ARG BASE_IMAGE=ghcr.io/tzarc/docker-osxcross:edge-ubuntu
+FROM ghcr.io/tzarc/docker-osxcross:edge-ubuntu AS osxcross
+
 FROM ubuntu:noble
+COPY --from=osxcross /osxcross /osxcross
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -6,6 +11,10 @@ RUN apt-get update \
     && apt-get install -y \
         sudo \
         build-essential \
+        cmake \
+        clang \
+        lld \
+        libc6-dev \
         git \
         wget \
         curl \
@@ -48,14 +57,16 @@ groupadd --non-unique -g \$qmk_gid qmk
 useradd --non-unique -u \$qmk_uid -g \$qmk_gid -N qmk
 echo "qmk ALL=(ALL) NOPASSWD:ALL" | tee /etc/sudoers.d/qmk >/dev/null 2>&1
 cd \$TC_WORKDIR
+export PATH="/osxcross/bin:/osxcross/binutils/bin:\$PATH"
 if [[ -n \$1 ]]; then
-    sudo -u qmk -g qmk -H -- bash -lic "exec \$*"
+    sudo -u qmk -g qmk -H --preserve-env=PATH -- bash -lic "exec \$*"
 else
-    sudo -u qmk -g qmk -H -- bash -li
+    sudo -u qmk -g qmk -H --preserve-env=PATH -- bash -li
 fi
 EOF
 
 RUN chmod +x /init.sh
 
 ENTRYPOINT ["/init.sh"]
+
 CMD ["bash"]

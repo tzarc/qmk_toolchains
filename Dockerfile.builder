@@ -1,0 +1,143 @@
+ARG ALPINE_VERSION="3.18"
+
+ARG OSX_SDK="MacOSX15.0.sdk"
+ARG OSX_SDK_URL="https://github.com/joseluisq/macosx-sdks/releases/download/15.0/${OSX_SDK}.tar.xz"
+
+ARG OSX_CROSS_COMMIT="29fe6dd35522073c9df5800f8cd1feb4b9a993a8"
+
+ARG CROSSTOOL_REPO_REF="63fdc9cb3735aa8da4381f0a59169e55a8590d11"
+
+# Get the macOS SDK
+FROM --platform=$BUILDPLATFORM alpine:${ALPINE_VERSION} AS sdk
+RUN apk --update --no-cache add ca-certificates curl tar xz
+ARG OSX_SDK
+ARG OSX_SDK_URL
+RUN curl -sSL "$OSX_SDK_URL" -o "/$OSX_SDK.tar.xz"
+RUN mkdir /osxsdk && tar -xf "/$OSX_SDK.tar.xz" -C "/osxsdk"
+
+# Get the osxcross source
+FROM --platform=$BUILDPLATFORM alpine:${ALPINE_VERSION} AS osxcross-src
+RUN apk --update --no-cache add patch
+WORKDIR /osxcross
+ARG OSX_CROSS_COMMIT
+ADD "https://github.com/tpoechtrager/osxcross.git#${OSX_CROSS_COMMIT}" .
+
+# From https://github.com/crazy-max/docker-osxcross
+COPY <<EOF lcxx.patch
+diff --git a/wrapper/target.cpp b/wrapper/target.cpp
+index 82bf65c..a2520e2 100644
+--- a/wrapper/target.cpp
++++ b/wrapper/target.cpp
+@@ -741,6 +741,9 @@ bool Target::setup() {
+           (stdlib == StdLib::libstdcxx && usegcclibs)) {
+         fargs.push_back("-nostdinc++");
+         fargs.push_back("-Qunused-arguments");
++        if ((SDKOSNum >= OSVersion(11, 1)) && (stdlib == StdLib::libcxx)) {
++          fargs.push_back("-lc++");
++        }
+       }
+
+       if (stdlib == StdLib::libstdcxx && usegcclibs && targetarch.size() < 2 &&
+EOF
+RUN patch -p1 < lcxx.patch
+
+# Pre-create the base image using existing macos-cross-compiler
+FROM ghcr.io/shepherdjerred/macos-cross-compiler:latest AS base-macoscompilers
+RUN export DEBIAN_FRONTEND="noninteractive" \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    apt-transport-https \
+    autoconf \
+    automake \
+    bash \
+    binutils-multiarch-dev \
+    bison \
+    build-essential \
+    ca-certificates \
+    clang \
+    cmake \
+    curl \
+    flex \
+    gawk \
+    git \
+    gperf \
+    help2man \
+    libbz2-dev \
+    libc6-dev \
+    libgmp-dev \
+    liblzma-dev \
+    libmpc-dev \
+    libmpfr-dev \
+    libncurses-dev \
+    libpsi3-dev \
+    libssl-dev \
+    libtool \
+    libtool-bin \
+    libxml2-dev \
+    libz-dev \
+    lld \
+    lzma-dev \
+    make \
+    meson \
+    patch \
+    patchelf \
+    python3 \
+    sudo \
+    texinfo \
+    unzip \
+    uuid-dev \
+    wget \
+    xz-utils \
+    zlib1g-dev
+
+# Build binutils for both x86_64 and aarch64
+FROM base-macoscompilers AS build-osxcross
+ARG OSX_SDK
+WORKDIR /workspace
+COPY --link --from=osxcross-src /osxcross .
+COPY --link --from=sdk /$OSX_SDK.tar.xz ./tarballs/$OSX_SDK.tar.xz
+ENV PATH="/osxcross/bin:$PATH"
+RUN mkdir build
+RUN OSX_VERSION_MIN=10.13 UNATTENDED=1 ENABLE_COMPILER_RT_INSTALL=1 TARGET_DIR=/osxcross TARGET_ARCH=x86_64 ./build_binutils.sh
+RUN OSX_VERSION_MIN=10.13 UNATTENDED=1 ENABLE_COMPILER_RT_INSTALL=1 TARGET_DIR=/osxcross TARGET_ARCH=aarch64 ./build_binutils.sh
+
+# Build crosstool-ng
+FROM build-osxcross AS build-crosstool-ng
+ARG CROSSTOOL_REPO_REF
+
+RUN git clone https://github.com/crosstool-ng/crosstool-ng.git /tmp/crosstool-ng \
+    && cd /tmp/crosstool-ng \
+    && git checkout --progress --force $CROSSTOOL_REPO_REF \
+    && ./bootstrap \
+    && ./configure --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make install \
+    && cd / \
+    && rm -rf /tmp/crosstool-ng
+
+# Configure bootstrap image
+FROM build-crosstool-ng AS bootstrap
+USER 0:0
+RUN userdel ubuntu || true && groupdel ubuntu || true
+
+# Runtime shell init script to ensure the user is created with the correct UID/GID for the mountpoint
+COPY <<EOF /init.sh
+#!/bin/bash
+set -eEuo pipefail
+qmk_uid=\$(stat --format='%u' \$TC_WORKDIR)
+qmk_gid=\$(stat --format='%g' \$TC_WORKDIR)
+groupadd --non-unique -g \$qmk_gid qmk
+useradd --non-unique -u \$qmk_uid -g \$qmk_gid -N qmk
+echo "qmk ALL=(ALL) NOPASSWD:ALL" | tee /etc/sudoers.d/qmk >/dev/null 2>&1
+cd \$TC_WORKDIR
+export PATH="/cctools/bin:/gcc/bin:/osxcross/binutils/bin:/osxcross/bin:\$PATH" # this must have `/cctools/bin:/gcc/bin` on \$PATH before osxcross equivalent
+if [[ -n \$1 ]]; then
+    sudo -u qmk -g qmk -H --preserve-env=PATH -- bash -lic "exec \$*"
+else
+    sudo -u qmk -g qmk -H --preserve-env=PATH -- bash -li
+fi
+EOF
+
+RUN chmod +x /init.sh
+ENTRYPOINT ["/init.sh"]
+CMD ["bash"]

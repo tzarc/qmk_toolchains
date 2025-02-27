@@ -4,6 +4,8 @@
 
 set -eEuo pipefail
 
+export SDK_VERSION=15.0
+
 # If necessary, re-exec with a clean environment inside docker
 function respawn_docker_if_needed() {
     if [[ "$(uname -s)" == "Linux" ]] && [[ -n "${EXECUTE_UNDER_DOCKER:-}" ]]; then
@@ -48,7 +50,7 @@ function fn_os() {
         os_name=$(uname -s | tr 'A-Z' 'a-z')
     fi
     case "$os_name" in
-    *darwin* | *macos*)
+    *darwin* | *macos* | *apple*)
         echo macos
         ;;
     *windows* | *mingw* | *w64*)
@@ -494,6 +496,7 @@ function build_one() {
     fi
 
     if [[ ${#positional_args[@]} -eq 1 ]] && [[ "${positional_args[0]}" == "source" ]]; then
+        export MACOSX_DEPLOYMENT_TARGET=12.0
         ct-ng source || true
     else
         nice -n 10 ct-ng ${positional_args[@]}

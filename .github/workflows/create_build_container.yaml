@@ -17,6 +17,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Move docker data root to /mnt for more space
+        run: |
+          DOCKER_DATA_ROOT='/mnt/var/lib/docker'
+          DOCKER_DAEMON_JSON='/etc/docker/daemon.json'
+          sudo mkdir -p "${DOCKER_DATA_ROOT}"
+          echo "{\"data-root\": \"${DOCKER_DATA_ROOT}\"}" | sudo tee "${DOCKER_DAEMON_JSON}"
+          sudo systemctl restart docker
+          sudo df -h
+
       - name: "Clone toolchains repo"
         uses: actions/checkout@v4
 

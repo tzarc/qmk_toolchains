@@ -3,7 +3,8 @@ name: "1. (tzarc) Create Build Container"
 
 on:
   workflow_dispatch:
-
+  schedule:
+    - cron: '37 13 */6 * *' # every 6 days to keep cache
 permissions:
   contents: read
   packages: write
@@ -11,6 +12,7 @@ permissions:
 env:
   TC_WORKDIR: '/t'
   EXECUTE_UNDER_DOCKER: true
+  CROSSTOOL_REPO_REF: 63fdc9cb3735aa8da4381f0a59169e55a8590d11
 
 jobs:
   base_container:
@@ -49,6 +51,8 @@ jobs:
         with:
           context: .
           file: Dockerfile.base
+          build-args: |
+            CROSSTOOL_REPO_REF=${{ env.CROSSTOOL_REPO_REF }}
           push: true
           platforms: linux/amd64
           cache-from: type=gha
@@ -73,7 +77,19 @@ jobs:
       - name: "Clone toolchains repo"
         uses: actions/checkout@v4
 
+      - name: Cache check
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            *.sh
+            Dockerfile*
+            common.bashinc
+            tarballs.tar
+          key: cache-tarballs-${{ hashFiles('*.sh', 'Dockerfile*', 'common.bashinc') }}
+
       - name: "Gather source tarballs"
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -x
           # Clear out the tools prefix so we can run everything, even without a bootstrap compiler present
@@ -81,8 +97,6 @@ jobs:
             ./$f --tools-prefix= source --container-image=ghcr.io/tzarc/qmk_toolchains:base
           done
           tar cvf tarballs.tar tarballs
-        env:
-          CROSSTOOL_REPO_REF: ${{ env.CROSSTOOL_REPO_REF }}
 
       - name: "Upload source tarballs"
         uses: actions/upload-artifact@v4

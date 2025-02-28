@@ -8,7 +8,7 @@ cd "$script_dir"
 source "${script_dir}/common.bashinc"
 
 build_one_help "$@"
-respawn_docker_if_needed "$@"
+respawn_docker_if_needed --container-image=ghcr.io/tzarc/qmk_toolchains:base "$@"
 
 build_one \
     --sample-name=x86_64-unknown-linux-gnu \

@@ -8,6 +8,10 @@ permissions:
   contents: read
   packages: write
 
+env:
+  TC_WORKDIR: '/t'
+  EXECUTE_UNDER_DOCKER: true
+
 jobs:
   base_container:
     # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
@@ -44,7 +48,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.builder
+          file: Dockerfile.base
           push: true
           platforms: linux/amd64
           cache-from: type=gha
@@ -63,8 +67,8 @@ jobs:
     steps:
       - name: "Setup docker workspace"
         run: |
-          sudo mkdir /t
-          sudo mount --bind $GITHUB_WORKSPACE /t
+          sudo mkdir $TC_WORKDIR
+          sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
 
       - name: "Clone toolchains repo"
         uses: actions/checkout@v4
@@ -74,13 +78,11 @@ jobs:
           set -x
           # Clear out the tools prefix so we can run everything, even without a bootstrap compiler present
           for f in $(ls -1 *.sh | grep -E '(native|canadian)'); do
-            ./$f --tools-prefix= source
+            ./$f --tools-prefix= source --container-image=ghcr.io/tzarc/qmk_toolchains:base
           done
           tar cvf tarballs.tar tarballs
         env:
           CROSSTOOL_REPO_REF: ${{ env.CROSSTOOL_REPO_REF }}
-          TC_WORKDIR: /t
-          EXECUTE_UNDER_DOCKER: true
 
       - name: "Upload source tarballs"
         uses: actions/upload-artifact@v4
@@ -103,3 +105,28 @@ jobs:
       build_script: x64linux-native-bootstrap.sh
       fetch_bootstrap: false
       toolchain_suffix: "_qmk_bootstrap"
+
+  # Build base toolchains
+  base-toolchains:
+    # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
+    if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
+
+    name: "Build base toolchains"
+    needs: [bootstrap-linuxX64-toolchain]
+    strategy:
+      fail-fast: false
+      matrix:
+        target_host: [linuxX64, linuxARM64, windowsX64]
+        include:
+          - target_host: linuxX64
+            build_script: x64linux-native.sh
+          - target_host: linuxARM64
+            build_script: aarch64linux-native.sh
+          - target_host: windowsX64
+            build_script: win64-native.sh
+    uses: ./.github/workflows/compile_one_toolchain.yaml
+    with:
+      crosstool_host_os: linuxX64
+      build_host: linuxX64
+      target_host: ${{ matrix.target_host }}
+      build_script: ${{ matrix.build_script }}

@@ -12,6 +12,10 @@ on:
       fetch_bootstrap: { type: boolean, required: false, default: true }
       toolchain_suffix: { type: string, required: false, default: "" }
 
+env:
+  TC_WORKDIR: '/t'
+  EXECUTE_UNDER_DOCKER: true
+
 jobs:
   # Split up the build as compiling newlib/libstdc++ targeting ARM takes so damn long.
   phase1:

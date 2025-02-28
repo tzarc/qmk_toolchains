@@ -17,14 +17,14 @@ on:
       save_state: { type: boolean, required: false, default: true }
       toolchain_tarball: { type: boolean, required: false, default: false }
 
+env:
+  TC_WORKDIR: '/t'
+  EXECUTE_UNDER_DOCKER: true
+
 jobs:
   invoke-crosstool:
     name: ${{ inputs.phase_number }}. ct-ng ${{ inputs.crosstool_args }}
     runs-on: ubuntu-latest
-
-    env:
-      TC_WORKDIR: '/t'
-      EXECUTE_UNDER_DOCKER: true
 
     steps:
       - name: Move docker data root to /mnt for more space

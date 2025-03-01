@@ -22,20 +22,23 @@ jobs:
     uses: ./.github/workflows/download_tarballs.yaml
 
   create_toolchains:
-    name: Create Toolchains
+    name: Toolchain
     needs: [tarballs]
 
     strategy:
       fail-fast: false
       matrix:
-        target_host: [baremetalARM, baremetalAVR, baremetalRV32]
         build_host: [linuxX64, linuxARM64, windowsX64, macosX64, macosARM64]
+        target_arch: [ARM, AVR, RV32]
         include:
-          - target_host: baremetalARM
+          - target_arch: ARM
+            target_host: baremetalARM
             build_script_prefix: arm
-          - target_host: baremetalAVR
+          - target_arch: AVR
+            target_host: baremetalAVR
             build_script_prefix: avr
-          - target_host: baremetalRV32
+          - target_arch: RV32
+            target_host: baremetalRV32
             build_script_prefix: riscv32
           - build_host: linuxX64
             build_script_suffix: native

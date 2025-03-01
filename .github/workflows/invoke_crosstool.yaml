@@ -29,6 +29,7 @@ jobs:
     steps:
       - name: Move docker data root to /mnt for more space
         run: |
+          set -x
           DOCKER_DATA_ROOT='/mnt/var/lib/docker'
           DOCKER_DAEMON_JSON='/etc/docker/daemon.json'
           sudo mkdir -p "${DOCKER_DATA_ROOT}"
@@ -38,6 +39,7 @@ jobs:
 
       - name: Setup workdir
         run: |
+          set -x
           # Shorten the path to `/t` because the normal path to the workspace is too long for some build configurations
           sudo mkdir $TC_WORKDIR
           sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
@@ -61,6 +63,7 @@ jobs:
 
       - name: All this space for activities
         run: |
+          set -x
           # Create and mount some workspace directories on `/mnt` as it has more space than the normal location
           sudo mkdir -p /mnt/workspace/{build,tarballs,toolchains}
           sudo chown -R $(id -u):$(id -g) /mnt/workspace
@@ -80,7 +83,8 @@ jobs:
       - name: Extract source tarballs
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          tar xf tarballs.tar
+          set -x
+          tar xvf tarballs.tar
 
       - name: Download bootstrap toolchain
         if: steps.cache.outputs.cache-hit != 'true' && inputs.fetch_bootstrap == true
@@ -91,8 +95,9 @@ jobs:
       - name: Extract bootstrap toolchain
         if: steps.cache.outputs.cache-hit != 'true' && inputs.fetch_bootstrap == true
         run: |
+          set -x
           mkdir -p toolchains
-          tar axf qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zstd -C toolchains
+          tar avxf qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zstd -C toolchains
           rm qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zstd
 
       - name: Determine previous phase number
@@ -109,17 +114,19 @@ jobs:
       - name: Extract build state
         if: steps.cache.outputs.cache-hit != 'true' && inputs.restore_state == true
         run: |
+          set -x
           cd $TC_WORKDIR
           # Ensure tarballs are extracted before we restore state as we've deleted $CT_COMMON_SRC_DIR before saving the state tarball
           ./${{ inputs.build_script }} +companion_tools_for_build
           # Extract the state tarball
-          tar xf state.tar
+          tar xvf state.tar
           # Convert any .tar.zstd files to .tar.gz from minimised cache
           tar tf state.tar | grep '.tar.zstd' | while read file ; do echo "$file"; pushd "$(dirname "$file")"; zstd -d "$(basename "$file")"; gzip "$(basename "$file" .zstd)"; popd; done
 
       - name: Build toolchain
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
+          set -x
           cd $TC_WORKDIR
           # Kick off the requested build phase (kill after 5h45m so logs can be gathered)
           timeout 19800 ./${{ inputs.build_script }} ${{ inputs.crosstool_args }}
@@ -136,6 +143,7 @@ jobs:
       - name: Make build state
         if: steps.cache.outputs.cache-hit != 'true' && inputs.save_state == true
         run: |
+          set -x
           # We're saving state so we can resume at each step -- some of the internal build directories can be blown away as restarting from a step will recreate them.
           latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r stat -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
           # Recompress any .tar.gz files to .tar.zstd to save cache space
@@ -153,12 +161,13 @@ jobs:
       - name: Make toolchain tarball
         if: steps.cache.outputs.cache-hit != 'true' && inputs.toolchain_tarball == true
         run: |
+          set -x
           if [[ "${{ inputs.build_host }}" == "windowsX64" ]] || [[ "${{ inputs.build_host }}" == "windowsARM64" ]]; then
             export DEREF_SYMLINKS_ARGS="--dereference --hard-dereference"
           fi
           latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r stat -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
           source "$latest_state/env.sh"
-          tar acf qmk_toolchain-gcc${CT_GCC_VERSION}-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zstd -C toolchains host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }} ${DEREF_SYMLINKS_ARGS:-}
+          tar avcf qmk_toolchain-gcc${CT_GCC_VERSION}-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zstd -C toolchains host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }} ${DEREF_SYMLINKS_ARGS:-}
 
       - name: Upload toolchain
         if: inputs.toolchain_tarball == true

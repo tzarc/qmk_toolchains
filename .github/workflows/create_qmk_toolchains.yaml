@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -86,7 +86,7 @@ jobs:
       - name: Unpack toolchains
         run: |
           mkdir toolchains
-          for file in $(ls qmk_toolchain*.tar.zstd); do
+          for file in $(ls qmk_toolchain*.tar.zst); do
             echo "Extracting $file"
             tar axf $file -C toolchains
           done
@@ -101,7 +101,7 @@ jobs:
       - name: Repack toolchains
         run: |
           for dir in $(ls -d toolchains/*${{ matrix.target_host }}); do
-            output_filename=$(ls qmk_toolchain*.tar.zstd | grep $(basename $dir))
+            output_filename=$(ls qmk_toolchain*.tar.zst | grep $(basename $dir))
             echo "Repacking toolchain in $dir => $output_filename"
             [[ ! -f $output_filename ]] || rm -f $output_filename
             tar acf $(basename ${output_filename}) -C toolchains $(basename $dir)
@@ -112,7 +112,7 @@ jobs:
         with:
           name: stripped-toolchains-target_${{ matrix.target_host }}
           path: |
-            qmk_toolchain-gcc*.tar.zstd
+            qmk_toolchain-gcc*.tar.zst
 
   publish:
     # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
@@ -143,7 +143,7 @@ jobs:
 
       - name: Dump list
         run: |
-          ls -1al *.tar.zstd
+          ls -1al *.tar.zst
 
       - name: Create Release
         if: always() && !cancelled()

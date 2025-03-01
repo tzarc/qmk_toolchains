@@ -57,8 +57,8 @@ jobs:
             Dockerfile*
             common.bashinc
             state.tar
-            build_logs.tar.zstd
-            qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zstd
+            build_logs.tar.zst
+            qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zst
           key: cache-${{ inputs.crosstool_host_os }}-${{ inputs.build_host }}-${{ inputs.target_host }}${{ inputs.toolchain_suffix }}-phase${{ inputs.phase_number }}-${{ hashFiles('${{ inputs.build_script }}', 'Dockerfile*', 'common.bashinc') }}
 
       - name: All this space for activities
@@ -97,8 +97,8 @@ jobs:
         run: |
           set -x
           mkdir -p toolchains
-          tar avxf qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zstd -C toolchains
-          rm qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zstd
+          tar avxf qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zst -C toolchains
+          rm qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zst
 
       - name: Determine previous phase number
         if: steps.cache.outputs.cache-hit != 'true' && inputs.restore_state == true
@@ -120,8 +120,8 @@ jobs:
           ./${{ inputs.build_script }} +companion_tools_for_build
           # Extract the state tarball
           tar xvf state.tar
-          # Convert any .tar.zstd files to .tar.gz from minimised cache
-          tar tf state.tar | grep '.tar.zstd' | while read file ; do echo "$file"; pushd "$(dirname "$file")"; zstd -d "$(basename "$file")"; gzip "$(basename "$file" .zstd)"; popd; done
+          # Convert any .tar.zst files to .tar.gz from minimised cache
+          tar tf state.tar | grep '.tar.zst' | while read file ; do echo "$file"; pushd "$(dirname "$file")"; zstd -f --rm -d "$(basename "$file")"; gzip "$(basename "$file" .zst)"; popd; done
 
       - name: Build toolchain
         if: steps.cache.outputs.cache-hit != 'true'
@@ -130,7 +130,7 @@ jobs:
           cd $TC_WORKDIR
           # Kick off the requested build phase (kill after 5h45m so logs can be gathered)
           timeout 19800 ./${{ inputs.build_script }} ${{ inputs.crosstool_args }}
-          find . \( -name \*.log \) -print0 | xargs -0 tar acvf build_logs.tar.zstd
+          find . \( -name \*.log \) -print0 | xargs -0 tar acvf build_logs.tar.zst
 
       - name: Upload build logs
         uses: actions/upload-artifact@v4
@@ -138,7 +138,7 @@ jobs:
         with:
           name: build.log-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}-phase${{ inputs.phase_number }}
           path: |
-            build_logs.tar.zstd
+            build_logs.tar.zst
 
       - name: Make build state
         if: steps.cache.outputs.cache-hit != 'true' && inputs.save_state == true
@@ -146,8 +146,8 @@ jobs:
           set -x
           # We're saving state so we can resume at each step -- some of the internal build directories can be blown away as restarting from a step will recreate them.
           latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r stat -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
-          # Recompress any .tar.gz files to .tar.zstd to save cache space
-          find $latest_state -name '*.tar.gz' | while read file ; do echo "$file"; pushd "$(dirname "$file")"; gzip -d "$(basename "$file")"; zstd "$(basename "$file" .gz)"; popd; done
+          # Recompress any .tar.gz files to .tar.zst to save cache space
+          find $latest_state -name '*.tar.gz' | while read file ; do echo "$file"; pushd "$(dirname "$file")"; gzip -d "$(basename "$file")"; zstd -f --rm "$(basename "$file" .gz)"; popd; done
           tar cf state.tar $latest_state
 
       - name: Upload build state
@@ -167,7 +167,7 @@ jobs:
           fi
           latest_state=$(dirname $(find $(find build -mindepth 4 -maxdepth 5 -type d -name state) -mindepth 2 -maxdepth 2 -type f -name env.sh -print0 | xargs -0r stat -c '%w|%n' | sort | cut -d'|' -f2 | tail -n1))
           source "$latest_state/env.sh"
-          tar avcf qmk_toolchain-gcc${CT_GCC_VERSION}-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zstd -C toolchains host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }} ${DEREF_SYMLINKS_ARGS:-}
+          tar avcf qmk_toolchain-gcc${CT_GCC_VERSION}-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zst -C toolchains host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }} ${DEREF_SYMLINKS_ARGS:-}
 
       - name: Upload toolchain
         if: inputs.toolchain_tarball == true
@@ -175,4 +175,4 @@ jobs:
         with:
           name: toolchain-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}
           path: |
-            qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zstd
+            qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zst

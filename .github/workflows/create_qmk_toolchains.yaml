@@ -39,24 +39,114 @@ jobs:
             build_script_prefix: riscv32
           - build_host: linuxX64
             build_script_suffix: native
-            canadian_build: false
           - build_host: linuxARM64
             build_script_suffix: aarch64linux-canadian
-            canadian_build: true
           - build_host: windowsX64
             build_script_suffix: win64-canadian
-            canadian_build: true
           - build_host: macosX64
             build_script_suffix: x64macos-canadian
-            canadian_build: true
           - build_host: macosARM64
             build_script_suffix: aarch64macos-canadian
-            canadian_build: true
     uses: ./.github/workflows/compile_one_toolchain.yaml
     with:
       crosstool_host_os: linuxX64
       build_host: ${{ matrix.build_host }}
       target_host: ${{ matrix.target_host }}
-      canadian_build: ${{ matrix.canadian_build }}
       build_script: ${{ matrix.build_script_prefix }}-${{ matrix.build_script_suffix }}.sh
       fetch_bootstrap: false
+
+
+  strip-and-repack-toolchains:
+    # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
+    if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
+
+    name: Strip and repack toolchains
+    needs: [create_toolchains]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target_host: [baremetalARM, baremetalAVR, baremetalRV32]
+
+    steps:
+      - name: "Clone toolchains repo"
+        uses: actions/checkout@v4
+
+      - name: Download toolchains
+        if: always() && !cancelled()
+        uses: actions/download-artifact@v4
+        with:
+          pattern: toolchain-*-target_${{ matrix.target_host }}
+          path: .
+          merge-multiple: true
+
+      - name: Unpack toolchains
+        run: |
+          mkdir toolchains
+          for file in $(ls qmk_toolchain*.tar.xz); do
+            echo "Extracting $file"
+            tar xf $file -C toolchains
+          done
+
+      - name: Strip toolchains
+        run: |
+          for dir in $(ls -d toolchains/*${{ matrix.target_host }}); do
+            echo "Stripping toolchain in $dir"
+            ./strip_toolchain.sh $dir
+          done
+
+      - name: Repack toolchains
+        run: |
+          for dir in $(ls -d toolchains/*${{ matrix.target_host }}); do
+            output_filename=$(ls qmk_toolchain*.tar.xz | grep $(basename $dir))
+            echo "Repacking toolchain in $dir => $output_filename"
+            [[ ! -f $output_filename ]] || rm -f $output_filename
+            tar cf $(basename ${output_filename} .xz) -C toolchains $(basename $dir)
+            xz -T 0 -z -9 -e $(basename ${output_filename} .xz)
+          done
+
+      - name: Upload toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: stripped-toolchains-target_${{ matrix.target_host }}
+          path: |
+            qmk_toolchain-gcc*.tar.xz
+
+  publish:
+    # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
+    if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
+
+    name: Publish toolchains
+    needs: [strip-and-repack-toolchains]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone toolchains repo
+        if: always() && !cancelled()
+        uses: actions/checkout@v4
+
+      - name: Delete tag
+        if: always() && !cancelled()
+        run: gh release delete latest --cleanup-tag || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download toolchains
+        if: always() && !cancelled()
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stripped-toolchains-*
+          path: .
+          merge-multiple: true
+
+      - name: Dump list
+        run: |
+          ls -1al *.tar.xz
+
+      - name: Create Release
+        if: always() && !cancelled()
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            qmk_toolchain*
+          tag_name: latest

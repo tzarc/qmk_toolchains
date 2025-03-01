@@ -66,44 +66,7 @@ jobs:
     if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
 
     name: "Download required tarballs"
-    runs-on: ubuntu-latest
-    needs: [base_container]
-
-    steps:
-      - name: "Setup docker workspace"
-        run: |
-          sudo mkdir $TC_WORKDIR
-          sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
-
-      - name: "Clone toolchains repo"
-        uses: actions/checkout@v4
-
-      - name: Cache check
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            *.sh
-            Dockerfile*
-            common.bashinc
-            tarballs.tar
-          key: cache-tarballs-${{ hashFiles('*.sh', 'Dockerfile*', 'common.bashinc') }}
-
-      - name: "Gather source tarballs"
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          set -x
-          # Clear out the tools prefix so we can run everything, even without a bootstrap compiler present
-          for f in $(ls -1 *.sh | grep -E '(native|canadian)'); do
-            ./$f --tools-prefix= source --container-image=ghcr.io/tzarc/qmk_toolchains:base
-          done
-          tar cvf tarballs.tar tarballs
-
-      - name: "Upload source tarballs"
-        uses: actions/upload-artifact@v4
-        with:
-          name: tarballs.tar
-          path: tarballs.tar
+    uses: ./.github/workflows/download_tarballs.yaml
 
   # Build a copy of linux/X64 toolchain to bootstrap the rest so that the resulting compilers are compatible with the old glibc.
   bootstrap-linuxX64-toolchain:

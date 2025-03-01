@@ -38,6 +38,7 @@ jobs:
 
       - name: Setup workdir
         run: |
+          # Shorten the path to `/t` because the normal path to the workspace is too long for some build configurations
           sudo mkdir $TC_WORKDIR
           sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
 
@@ -56,6 +57,18 @@ jobs:
             build_logs.tar.xz
             qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.xz
           key: cache-${{ inputs.crosstool_host_os }}-${{ inputs.build_host }}-${{ inputs.target_host }}${{ inputs.toolchain_suffix }}-phase${{ inputs.phase_number }}-${{ hashFiles('${{ inputs.build_script }}', 'Dockerfile*', 'common.bashinc') }}
+
+      - name: All this space for activities
+        run: |
+          # Create and mount some workspace directories on `/mnt` as it has more space than the normal location
+          sudo mkdir -p /mnt/workspace/{build,tarballs,toolchains}
+          sudo chown -R $(id -u):$(id -g) /mnt/workspace
+          mkdir -p $TC_WORKDIR/{build,tarballs,toolchains}
+          sudo mount --bind /mnt/workspace/build $TC_WORKDIR/build
+          sudo mount --bind /mnt/workspace/tarballs $TC_WORKDIR/tarballs
+          sudo mount --bind /mnt/workspace/toolchains $TC_WORKDIR/toolchains
+          sudo df -h
+          sudo mount | column -t
 
       - name: Download source tarballs
         if: steps.cache.outputs.cache-hit != 'true'
@@ -80,19 +93,6 @@ jobs:
           mkdir -p toolchains
           tar xf qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.xz -C toolchains
           rm qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.xz
-
-      - name: Download canadian host toolchain
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.canadian_build == true
-        uses: actions/download-artifact@v4
-        with:
-          name: toolchain-host_${{ inputs.crosstool_host_os }}-target_${{ inputs.build_host }}
-
-      - name: Extract canadian host toolchain
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.canadian_build == true
-        run: |
-          mkdir -p toolchains
-          tar xf qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.build_host }}.tar.xz -C toolchains
-          rm qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.build_host }}.tar.xz
 
       - name: Determine previous phase number
         if: steps.cache.outputs.cache-hit != 'true' && inputs.restore_state == true

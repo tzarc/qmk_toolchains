@@ -11,7 +11,7 @@ build_one_help "$@"
 respawn_docker_if_needed "$@"
 
 if [[ $(uname -s) == "Linux" ]]; then
-    extra_args="--tools-prefix=x86_64-qmk_bootstrap-linux-gnu-"
+    extra_args="--tools-prefix=x86_64-qmk-linux-gnu-"
 fi
 
 build_one \

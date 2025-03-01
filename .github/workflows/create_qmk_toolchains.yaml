@@ -1,0 +1,62 @@
+---
+name: "2. (tzarc) Create QMK Toolchains"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  TC_WORKDIR: '/t'
+  EXECUTE_UNDER_DOCKER: true
+
+jobs:
+
+  tarballs:
+    # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
+    if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
+
+    name: "Download required tarballs"
+    uses: ./.github/workflows/download_tarballs.yaml
+
+  create_toolchains:
+    name: Create Toolchains
+    needs: [tarballs]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target_host: [baremetalARM, baremetalAVR, baremetalRV32]
+        build_host: [linuxX64, linuxARM64, windowsX64, macosX64, macosARM64]
+        include:
+          - target_host: baremetalARM
+            build_script_prefix: arm
+          - target_host: baremetalAVR
+            build_script_prefix: avr
+          - target_host: baremetalRV32
+            build_script_prefix: riscv32
+          - build_host: linuxX64
+            build_script_suffix: native
+            canadian_build: false
+          - build_host: linuxARM64
+            build_script_suffix: aarch64linux-canadian
+            canadian_build: true
+          - build_host: windowsX64
+            build_script_suffix: win64-canadian
+            canadian_build: true
+          - build_host: macosX64
+            build_script_suffix: x64macos-canadian
+            canadian_build: true
+          - build_host: macosARM64
+            build_script_suffix: aarch64macos-canadian
+            canadian_build: true
+    uses: ./.github/workflows/compile_one_toolchain.yaml
+    with:
+      crosstool_host_os: linuxX64
+      build_host: ${{ matrix.build_host }}
+      target_host: ${{ matrix.target_host }}
+      canadian_build: ${{ matrix.canadian_build }}
+      build_script: ${{ matrix.build_script_prefix }}-${{ matrix.build_script_suffix }}.sh
+      fetch_bootstrap: false

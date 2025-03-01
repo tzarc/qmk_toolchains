@@ -75,6 +75,7 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
     libtool-bin \
     libxml2-dev \
     libz-dev \
+    libzstd-dev \
     lld \
     lzma-dev \
     make \
@@ -88,7 +89,8 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
     uuid-dev \
     wget \
     xz-utils \
-    zlib1g-dev
+    zlib1g-dev \
+    zstd
 
 # Build binutils for both x86_64 and aarch64
 FROM base-macoscompilers AS build-osxcross
@@ -146,6 +148,7 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
     libtool-bin \
     libxml2-dev \
     libz-dev \
+    libzstd-dev \
     lld \
     lzma-dev \
     make \
@@ -159,7 +162,8 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
     uuid-dev \
     wget \
     xz-utils \
-    zlib1g-dev
+    zlib1g-dev \
+    zstd
 
 # Copy across the base image compilers and SDKs
 COPY --from=build-crosstool-ng /ct-ng /ct-ng

@@ -83,9 +83,9 @@ jobs:
       - name: Unpack toolchains
         run: |
           mkdir toolchains
-          for file in $(ls qmk_toolchain*.tar.xz); do
+          for file in $(ls qmk_toolchain*.tar.zstd); do
             echo "Extracting $file"
-            tar xf $file -C toolchains
+            tar axf $file -C toolchains
           done
 
       - name: Strip toolchains
@@ -98,11 +98,10 @@ jobs:
       - name: Repack toolchains
         run: |
           for dir in $(ls -d toolchains/*${{ matrix.target_host }}); do
-            output_filename=$(ls qmk_toolchain*.tar.xz | grep $(basename $dir))
+            output_filename=$(ls qmk_toolchain*.tar.zstd | grep $(basename $dir))
             echo "Repacking toolchain in $dir => $output_filename"
             [[ ! -f $output_filename ]] || rm -f $output_filename
-            tar cf $(basename ${output_filename} .xz) -C toolchains $(basename $dir)
-            xz -T 0 -z -9 -e $(basename ${output_filename} .xz)
+            tar acf $(basename ${output_filename}) -C toolchains $(basename $dir)
           done
 
       - name: Upload toolchain
@@ -110,7 +109,7 @@ jobs:
         with:
           name: stripped-toolchains-target_${{ matrix.target_host }}
           path: |
-            qmk_toolchain-gcc*.tar.xz
+            qmk_toolchain-gcc*.tar.zstd
 
   publish:
     # only actually execute on @tzarc's repo so as to not lock up QMK org's resources
@@ -141,7 +140,7 @@ jobs:
 
       - name: Dump list
         run: |
-          ls -1al *.tar.xz
+          ls -1al *.tar.zstd
 
       - name: Create Release
         if: always() && !cancelled()

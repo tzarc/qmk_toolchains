@@ -20,6 +20,7 @@ on:
 env:
   TC_WORKDIR: '/t'
   EXECUTE_UNDER_DOCKER: true
+  GIT_DISCOVERY_ACROSS_FILESYSTEM: true
 
 jobs:
   invoke-crosstool:
@@ -37,15 +38,15 @@ jobs:
           sudo systemctl restart docker
           sudo df -h
 
+      - name: Clone toolchains repo
+        uses: actions/checkout@v4
+
       - name: Setup workdir
         run: |
           set -x
           # Shorten the path to `/t` because the normal path to the workspace is too long for some build configurations
           sudo mkdir $TC_WORKDIR
           sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
-
-      - name: Clone toolchains repo
-        uses: actions/checkout@v4
 
       - name: Cache check
         if: inputs.keep_cache
@@ -61,7 +62,7 @@ jobs:
             qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zst
           key: cache-${{ inputs.crosstool_host_os }}-${{ inputs.build_host }}-${{ inputs.target_host }}${{ inputs.toolchain_suffix }}-phase${{ inputs.phase_number }}-${{ hashFiles('${{ inputs.build_script }}', 'Dockerfile*', 'common.bashinc') }}
 
-      - name: All this space for activities
+      - name: Look at all this space for activities
         run: |
           set -x
           # Create and mount some workspace directories on `/mnt` as it has more space than the normal location

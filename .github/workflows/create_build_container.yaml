@@ -26,6 +26,7 @@ jobs:
     steps:
       - name: Move docker data root to /mnt for more space
         run: |
+          set -x
           DOCKER_DATA_ROOT='/mnt/var/lib/docker'
           DOCKER_DAEMON_JSON='/etc/docker/daemon.json'
           sudo mkdir -p "${DOCKER_DATA_ROOT}"
@@ -66,6 +67,7 @@ jobs:
     if: always() && !cancelled() && github.repository == 'tzarc/qmk_toolchains'
 
     name: "Download required tarballs"
+    needs: [base_container]
     uses: ./.github/workflows/download_tarballs.yaml
 
   # Build a copy of linux/X64 toolchain to bootstrap the rest so that the resulting compilers are compatible with the old glibc.
@@ -135,6 +137,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: toolchain-host_linuxX64-target_windowsX64
+
+      - name: List directory
+        run: |
+          set -x
+          ls -l
 
       - name: Login to GHCR
         if: github.event_name != 'pull_request'

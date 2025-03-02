@@ -163,7 +163,9 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
     wget \
     xz-utils \
     zlib1g-dev \
-    zstd
+    zstd \
+  && apt-get clean \
+  && rm -rf /var/cache/apt/archives /var/lib/apt/lists
 
 # Copy across the base image compilers and SDKs
 COPY --from=build-crosstool-ng /ct-ng /ct-ng

@@ -90,7 +90,9 @@ RUN export DEBIAN_FRONTEND="noninteractive" \
     wget \
     xz-utils \
     zlib1g-dev \
-    zstd
+    zstd \
+  && apt-get clean \
+  && rm -rf /var/cache/apt/archives /var/lib/apt/lists
 
 # Build binutils for both x86_64 and aarch64
 FROM base-macoscompilers AS build-osxcross

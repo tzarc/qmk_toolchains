@@ -30,7 +30,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            tarballs.tar
+            tarballs.tar.zst
           key: cache-tarballs-${{ hashFiles('.github/workflows/**', '*.sh', 'Dockerfile*', 'common.bashinc') }}
 
       - name: "Gather source tarballs"
@@ -41,10 +41,10 @@ jobs:
           for f in $(ls -1 *.sh | grep -E '(native|canadian)'); do
             ./$f --tools-prefix= source --container-image=ghcr.io/tzarc/qmk_toolchains:base
           done
-          tar cvf tarballs.tar tarballs
+          tar acvf tarballs.tar.zst tarballs
 
       - name: "Upload source tarballs"
         uses: actions/upload-artifact@v4
         with:
-          name: tarballs.tar
-          path: tarballs.tar
+          name: tarballs
+          path: tarballs.tar.zst

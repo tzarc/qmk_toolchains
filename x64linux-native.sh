@@ -18,6 +18,5 @@ build_one \
     --sample-name=x86_64-unknown-linux-gnu \
     --vendor-name=qmk \
     --no-cross-gdb-python \
-    --build-host-compile \
     ${extra_args:-} \
     "$@"

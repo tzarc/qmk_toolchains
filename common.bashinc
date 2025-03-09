@@ -132,12 +132,9 @@ function build_one_args() {
 --libc=<flavour>        -- Overrides the C library to build. Usually 'picolibc', 'newlib', or 'none'. (optional)
 --extra-newlib-nano     -- Builds newlib-nano in addition to the usual C library (optional)
 --extra-picolibc        -- Builds picolibc in addition to the usual C library (optional)
---static-toolchain      -- Builds the toolchain such that it's statically linked (optional)
 --multilib-list=<value> -- Overrides the list of multilib targets generated. Sets \$CT_CC_GCC_MULTILIB_LIST. (optional)
---binutils-plugins      -- Builds the toolchain with binutils plugins enabled (optional) -- cannot be used with \`--static-toolchain\`
 --tools-prefix=<value>  -- Override the build toolchain. For example \`x86_64-unknown-linux-gnu-\`, with the trailing slash. \`gcc\` et.al. will be appended. (optional)
 --dir-suffix=<value>    -- Appends a suffix to the toolchain output directory. (optional)
---build-host-compile    -- Runs a build producing an earlier version of gcc, for subsequent gcc generated binary compatibility reasons
 --container-image       -- Which container image to use.
 __EOT__
 }
@@ -251,30 +248,6 @@ function build_one() {
     # Increase the number of parallel jobs so that we can hopefully not be bound by I/O
     echo "CT_PARALLEL_JOBS=$(( $(cpu_count)*2 + 1 ))" >>.config
 
-    if [[ ! -z "${build_host_compile:-}" ]]; then
-        # If we're building a toolchain for a build host, build a known-good earlier version of gcc first in case the package manager version is problematic
-        ${SED} -i \
-            -e 's/^.*CT_GCC_V_.*$/# CT_GCC_V_???? is not set/' \
-            -e 's/^.*CT_GCC_VERSION.*$/# CT_GCC_VERSION is not set/' \
-            -e 's/^.*CT_GCC_.*_or_later$/# CT_GCC_????_or_later is not set/' \
-            -e 's/^.*CT_GCC_REQUIRE_.*_or_later$/# CT_GCC_REQUIRE_????_or_later is not set/' \
-            -e 's/^.*CT_GCC_.*_or_older.*$/# CT_GCC_V_????_or_older is not set/' \
-            -e 's/^.*CT_GCC_.*_or_later.*$/# CT_GCC_V_????_or_later is not set/' \
-            -e 's/^.*CT_GCC_later_than_.*$/# CT_GCC_later_than_???? is not set/' \
-            -e 's/^.*CT_GCC_older_than_.*$/# CT_GCC_older_than_???? is not set/' \
-            .config
-        echo "CT_GCC_V_12=y" >>.config
-        echo "CT_GCC_VERSION=\"12.4.0\"" >>.config
-
-        # Target mingw-w64 v10 (build issues with v11+, revisit this after crosstool-ng fixes things)
-        ${SED} -i \
-            -e 's/^.*CT_MINGW_W64_V_.*$/# CT_MINGW_W64_V_???? is not set/' \
-            -e 's/^.*CT_MINGW_W64_VERSION.*$/# CT_MINGW_W64_VERSION is not set/' \
-            .config
-        echo "CT_MINGW_W64_V_V10_0=y" >>.config
-        echo "CT_MINGW_W64_VERSION=\"v10.0.0\"" >>.config
-    fi
-
     ct_ng_olddefconfig
 
     # Disable the progress bar and other unnecessary features
@@ -303,10 +276,7 @@ function build_one() {
     echo unset CT_GLIBC_KERNEL_VERSION_NONE >>.config
     echo CT_GLIBC_KERNEL_VERSION_AS_HEADERS=y >>.config
     echo CT_GLIBC_MIN_KERNEL="\${CT_LINUX_VERSION}" >>.config
-
-    # Pin to ncurses 6.4 as 6.5 is broken - see https://github.com/crosstool-ng/crosstool-ng/issues/2292
-    echo CT_NCURSES_V_6_4=y >>.config
-    echo 'CT_NCURSES_VERSION="6.4"' >>.config
+    echo CT_BINUTILS_PLUGINS=n >>.config # need to disable these as builds providing LTO fail on Windows because the DLLs export too many symbols (>65536)
 
     ct_ng_olddefconfig
 
@@ -326,28 +296,6 @@ function build_one() {
     echo "CT_CC_LANG_GOLANG=n" >>.config
     echo "# CT_CC_LANG_GOLANG is not set" >>.config
     ct_ng_olddefconfig
-
-    # Ensure we aren't attempting an incompatible configuration between plugins and a static toolchain
-    if [[ ! -z "${binutils_plugins:-}" ]] && [[ ! -z "${static_toolchain:-}" ]]; then
-        echo "Cannot use \`--binutils-plugins\` and \`--static-toolchain\` together." >&2
-        exit 1
-    fi
-
-    # Enable binutils plugins if requested
-    if [[ ! -z "${binutils_plugins:-}" ]]; then
-        echo "CT_BINUTILS_PLUGINS=y" >>.config
-        ct_ng_olddefconfig
-    fi
-
-    # Enable static linking if requested
-    if [[ ! -z "${static_toolchain:-}" ]]; then
-        ${SED} -i \
-            -e 's/^.*CT_STATIC_TOOLCHAIN.*$/CT_STATIC_TOOLCHAIN=y/' \
-            -e 's/^.*CT_WANTS_STATIC_LINK.*$/CT_WANTS_STATIC_LINK=y/' \
-            -e 's/^.*CT_WANTS_STATIC_LINK_CXX.*$/CT_WANTS_STATIC_LINK_CXX=y/' \
-            .config
-        ct_ng_olddefconfig
-    fi
 
     # Configure the required C library
     if [[ ! -z "${libc:-}" ]]; then
@@ -408,9 +356,7 @@ function build_one() {
 
     # Disable python for cross-compile GDB if necessary
     if [[ ! -z "${no_cross_gdb_python:-}" ]]; then
-        ${SED} -i \
-            -e 's/^.*CT_GDB_CROSS_PYTHON.*$/# CT_GDB_CROSS_PYTHON is not set/' \
-            .config
+        echo CT_GDB_CROSS_PYTHON=n >>.config
         ct_ng_olddefconfig
     fi
 
@@ -429,7 +375,7 @@ function build_one() {
             # - see https://stackoverflow.com/a/79252672
             # - see https://github.com/crosstool-ng/crosstool-ng/issues/2258
             #echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--disable-host-shared --disable-win32-utf8-manifest\"" >>.config
-            echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--disable-win32-utf8-manifest\"" >>.config
+            #echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--disable-win32-utf8-manifest\"" >>.config
             echo "# CT_LIBC_GLIBC is not set" >>.config
         fi
 
@@ -452,23 +398,25 @@ function build_one() {
     ${SED} -i \
         -e 's@^.*CT_PREFIX_DIR=.*$@CT_PREFIX_DIR="'${toolchain_dir}'"@' \
         .config
+    ct_ng_olddefconfig
 
     # Enable debug options
     echo "CT_DEBUG_CT=y" >>.config
     ct_ng_olddefconfig
-    # Save the build steps so that we can save/restore on GHA due to build execution time limits
+
+    # Save the build steps so that we can save/restore on GHA due to build execution time limits, skip compression because we'll use zstd on GHA instead.
     echo "CT_DEBUG_CT_SAVE_STEPS=y" >>.config
-    echo "CT_DEBUG_CT_SAVE_STEPS_GZIP=y" >>.config
-    ct_ng_olddefconfig
+    echo "CT_DEBUG_CT_SAVE_STEPS_GZIP=n" >>.config
+
     # Set the toolchain version string
-    echo "CT_TOOLCHAIN_PKGVERSION=\"qmk/qmk_toolchains @ $(git rev-parse --short HEAD)\"" >>.config
-    ct_ng_olddefconfig
+    echo "CT_TOOLCHAIN_PKGVERSION=\"qmk/qmk_toolchains @ $(git describe --always --dirty --exclude '*')\"" >>.config
 
     if [[ -n "${tools_prefix:-}" ]]; then
         # Set the tools prefix
         echo "CT_BUILD_PREFIX=\"${tools_prefix}\"" >>.config
-        ct_ng_olddefconfig
     fi
+
+    ct_ng_olddefconfig
 
     # Save a copy of the "cut-down" config for inspection purposes.
     ct-ng savedefconfig

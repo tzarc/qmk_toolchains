@@ -126,7 +126,7 @@ jobs:
           set -x
           for dir in $(ls -d toolchains/*${{ matrix.target_host }}); do
             echo "Stripping toolchain in $dir"
-            ./strip_toolchain.sh $dir
+            ./strip_toolchain.sh $dir build/$(basename $dir)
           done
 
       - name: Repack toolchains

@@ -145,6 +145,7 @@ function build_one_args() {
 --tools-prefix=<value>  -- Override the build toolchain. For example \`x86_64-unknown-linux-gnu-\`, with the trailing slash. \`gcc\` et.al. will be appended. (optional)
 --dir-suffix=<value>    -- Appends a suffix to the toolchain output directory. (optional)
 --container-image       -- Which container image to use.
+--strip-toolchain       -- Strips the toolchain after completion.
 __EOT__
 }
 
@@ -459,6 +460,10 @@ function build_one() {
         ct-ng source || true
     else
         nice -n 10 ionice -c 3 ct-ng ${positional_args[@]}
+
+        if [ -n "${strip_toolchain:-}" ]; then
+            "$script_dir/strip_toolchain.sh" "$(realpath "${toolchain_dir}")" "$(realpath "${build_dir}")"
+        fi
 
         # Sign macOS executables
         if [ -n "$(echo $toolchain_dir | grep macos)" ]; then

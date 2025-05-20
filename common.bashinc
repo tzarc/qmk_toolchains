@@ -58,6 +58,9 @@ function fn_os() {
     *windows* | *mingw* | *w64*)
         echo windows
         ;;
+    *linux*musl* | *musl*linux*)
+        echo linuxmusl
+        ;;
     *linux*)
         echo linux
         ;;
@@ -127,6 +130,11 @@ function fn_os_arch_fromtriplet() {
     # If we're into the ABI stuff, then backtrack
     if [[ "$input_os" == "eabi" ]] || [[ "$input_os" == "elf" ]] || [[ "$input_os" == "mingw32" ]]; then
         input_os=$(echo $input_var | cut -d'-' -f2)
+    fi
+
+    # If we found `linux` but also have `musl` in the triplet, then we need to set the os to `linuxmusl`
+    if [[ "$input_os" == "linux" ]] && [[ "$input_var" == *"musl"* ]]; then
+        input_os="linuxmusl"
     fi
 
     fn_os_arch $input_os $input_arch

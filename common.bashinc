@@ -9,6 +9,11 @@ export SDK_VERSION=15.0
 # macOS Target Version (Monterey)
 export MACOSX_DEPLOYMENT_TARGET=12.0
 
+function rcmd() {
+    echo -e "\e[0;36mRunning: \e[1;36m$*\e[0m" >&2
+    "$@"
+}
+
 # If necessary, re-exec with a clean environment inside docker
 function respawn_docker_if_needed() {
     if [[ "$(uname -s)" == "Linux" ]] && [[ -n "${EXECUTE_UNDER_DOCKER:-}" ]]; then
@@ -22,11 +27,14 @@ function respawn_docker_if_needed() {
         fi
 
         cd "$script_dir"
-        docker run --rm \
+        rcmd docker run --rm \
             ${interactive:-} \
             -v "$script_dir:$TC_WORKDIR" \
             -w "$TC_WORKDIR" \
             -e TC_WORKDIR="$TC_WORKDIR" \
+            --cpus="$(bc -l <<< "scale=2; $(nproc)*0.8")" \
+            --memory="$(bc -l <<< "scale=2; $(free -m | awk '/^Mem:/{print $2}') * 0.8 / 1")m" \
+            --oom-kill-disable \
             $container_image \
             ./$(basename $this_script) "$@"
         exit $?

@@ -386,6 +386,11 @@ function build_one() {
     echo "# CT_CC_LANG_OBJCXX is not set" >>.config
     echo "CT_CC_LANG_GOLANG=n" >>.config
     echo "# CT_CC_LANG_GOLANG is not set" >>.config
+
+    # Too many concurrent LTO runs breaks RISC-V builds on GHA, which terminate due to being OOM
+    # See https://bugs.gentoo.org/946338 for similar issues
+    echo 'CT_CC_GCC_CORE_EXTRA_CONFIG_ARRAY="--enable-link-serialization=1"' >>.config
+
     ct_ng_olddefconfig
 
     # Configure the required C library

@@ -28,8 +28,9 @@ jobs:
 
     steps:
       - name: Maximize build space
-        uses: easimon/maximize-build-space@master
+        uses: tzarc/maximize-build-space@btrfs-mods
         with:
+          btrfs-compression: "true"
           build-mount-path: /b
           root-reserve-mb: 2048
           swap-size-mb: 16384
@@ -38,30 +39,6 @@ jobs:
           remove-haskell: "true"
           remove-codeql: "true"
           remove-docker-images: "true"
-
-      - name: Move docker data root to /b for more space
-        run: |
-          set -x
-          DOCKER_DATA_ROOT='/b/.docker'
-          DOCKER_DAEMON_JSON='/etc/docker/daemon.json'
-          sudo mkdir -p "${DOCKER_DATA_ROOT}"
-          echo "{\"data-root\": \"${DOCKER_DATA_ROOT}\"}" | sudo tee "${DOCKER_DAEMON_JSON}"
-          sudo systemctl restart docker
-          sudo df -h
-
-      - name: Move GitHub _temp to /b for more space
-        run: |
-          set -x
-          sudo mkdir -p /b/_temp
-          sudo mount --bind /b/_temp /home/runner/work/_temp
-          sudo chown -R $(id -u):$(id -g) /home/runner/work/_temp
-
-      - name: Move GitHub workspace to /b for more space
-        run: |
-          set -x
-          sudo mkdir -p /b/workspace
-          sudo mount --bind /b/workspace $GITHUB_WORKSPACE
-          sudo chown -R $(id -u):$(id -g) $GITHUB_WORKSPACE
 
       - name: Install dependencies
         run: |
@@ -92,6 +69,8 @@ jobs:
       - name: Look at all this space for activities
         run: |
           set -x
+          sudo free -h
+          sudo swapon --show
           sudo df -h
           sudo mount | column -t
 
@@ -143,6 +122,15 @@ jobs:
           # Extract the state tarball
           tar axf state.tar
 
+      - name: Look at all this space for activities (pre-build)
+        if: always() && !cancelled()
+        run: |
+          set -x
+          sudo free -h
+          sudo swapon --show
+          sudo df -h
+          sudo mount | column -t
+
       - name: Build toolchain
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -150,6 +138,15 @@ jobs:
           cd $TC_WORKDIR
           # Kick off the requested build phase (kill after 5h45m so logs can be gathered)
           timeout 19800 ./${{ inputs.build_script }} ${{ inputs.script_args }}
+
+      - name: Look at all this space for activities (post-build)
+        if: always() && !cancelled()
+        run: |
+          set -x
+          sudo free -h
+          sudo swapon --show
+          sudo df -h
+          sudo mount | column -t
 
       - name: Gather build logs
         if: always() && !cancelled()

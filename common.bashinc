@@ -34,6 +34,7 @@ function respawn_docker_if_needed() {
             -e TC_WORKDIR="$TC_WORKDIR" \
             --cpus="$(bc -l <<< "scale=2; $(nproc)*0.8")" \
             --memory="$(bc -l <<< "scale=2; $(free -m | awk '/^Mem:/{print $2}') * 0.8 / 1")m" \
+            --memory-swap="-1" \
             --oom-kill-disable \
             $container_image \
             ./$(basename $this_script) "$@"

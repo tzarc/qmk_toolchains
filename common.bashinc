@@ -35,7 +35,6 @@ function respawn_docker_if_needed() {
             --cpus="$(bc -l <<< "scale=2; $(nproc)*0.9")" \
             --memory="$(bc -l <<< "scale=2; $(free -m | awk '/^Mem:/{print $2}') * 0.9 / 1")m" \
             --memory-swap="-1" \
-            --memory-swappiness=100 \
             $container_image \
             ./$(basename $this_script) "$@"
         exit $?

@@ -40,7 +40,7 @@ jobs:
           btrfs-compression: "true"
           build-mount-path: /b
           root-reserve-mb: 2048
-          swap-size-mb: 32768
+          swap-size-mb: 8192
           remove-dotnet: "true"
           remove-android: "true"
           remove-haskell: "true"

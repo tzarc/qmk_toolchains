@@ -54,11 +54,12 @@ jobs:
 
     steps:
       - name: Maximize build space
-        uses: easimon/maximize-build-space@master
+        uses: tzarc/maximize-build-space@btrfs-mods
         with:
+          btrfs-compression: "true"
           build-mount-path: /b
-          root-reserve-mb: 1024
-          swap-size-mb: 20480
+          root-reserve-mb: 2048
+          swap-size-mb: 8192
           remove-dotnet: "true"
           remove-android: "true"
           remove-haskell: "true"

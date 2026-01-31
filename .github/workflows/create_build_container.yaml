@@ -4,7 +4,7 @@ name: 1. (tzarc) Create Build Container
 on:
   workflow_dispatch:
   schedule:
-    - cron: "4 3 */6 * *" # every 6 days to keep cache
+    - cron: "4 3 */6 * *" # every 6 days to ensure we still work
 
 permissions:
   contents: read
@@ -67,8 +67,6 @@ jobs:
             CROSSTOOL_REPO_REF=${{ env.CROSSTOOL_REPO_REF }}
           push: true
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           tags: |
             ghcr.io/tzarc/qmk_toolchains:base
 
@@ -170,7 +168,5 @@ jobs:
           file: Dockerfile.builder
           push: true
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           tags: |
             ghcr.io/tzarc/qmk_toolchains:builder

@@ -62,16 +62,6 @@ jobs:
           sudo mkdir $TC_WORKDIR
           sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
 
-      - name: Cache check
-        id: cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            state.tar.zst
-            build_logs.tar.zst
-            qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zst
-          key: cache-${{ inputs.crosstool_host_os }}-${{ inputs.build_host }}-${{ inputs.target_host }}${{ inputs.toolchain_suffix }}-phase${{ inputs.phase_number }}-${{ hashFiles('.github/workflows/**', '${{ inputs.build_script }}', 'Dockerfile*', 'common.bashinc') }}
-
       - name: Look at all this space for activities
         run: |
           set -x
@@ -81,26 +71,24 @@ jobs:
           sudo mount | column -t
 
       - name: Download source tarballs
-        if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/download-artifact@v7
         with:
           name: tarballs
 
       - name: Extract source tarballs
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -x
           df -h .
           tar axf tarballs.tar.zst
 
       - name: Download bootstrap toolchain
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.fetch_bootstrap == true
+        if: inputs.fetch_bootstrap == true
         uses: actions/download-artifact@v7
         with:
           name: toolchain-host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap
 
       - name: Extract bootstrap toolchain
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.fetch_bootstrap == true
+        if: inputs.fetch_bootstrap == true
         run: |
           set -x
           mkdir -p toolchains
@@ -108,18 +96,18 @@ jobs:
           rm qmk_toolchain*host_${{ inputs.crosstool_host_os }}-target_${{ inputs.crosstool_host_os }}_qmk_bootstrap.tar.zst
 
       - name: Determine previous phase number
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.restore_state == true
+        if: inputs.restore_state == true
         run: |
           echo LAST_PHASE_NUMBER=$((${{ inputs.phase_number }} - 1)) >> $GITHUB_ENV
 
       - name: Download build state
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.restore_state == true
+        if: inputs.restore_state == true
         uses: actions/download-artifact@v7
         with:
           name: state-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}-phase${{ env.LAST_PHASE_NUMBER }}
 
       - name: Extract build state
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.restore_state == true
+        if: inputs.restore_state == true
         run: |
           set -x
           cd $TC_WORKDIR
@@ -138,7 +126,6 @@ jobs:
           sudo mount | column -t
 
       - name: Build toolchain
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           (while true; do
             echo "[$(date +%H:%M:%S)] Mem: $(free -h | grep Mem | awk '{print $3"/"$2}') Swap: $(free -h | grep Swap | awk '{print $3"/"$2}')"
@@ -182,7 +169,7 @@ jobs:
             build_logs.tar.zst
 
       - name: Make build state
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.save_state == true
+        if: inputs.save_state == true
         run: |
           set -x
           # We're saving state so we can resume at each step -- some of the internal build directories can be blown away as restarting from a step will recreate them.
@@ -199,7 +186,7 @@ jobs:
           overwrite: true
 
       - name: Make toolchain tarball
-        if: steps.cache.outputs.cache-hit != 'true' && inputs.toolchain_tarball == true
+        if: inputs.toolchain_tarball == true
         run: |
           set -x
           if [[ "${{ inputs.build_host }}" == "windowsX64" ]] || [[ "${{ inputs.build_host }}" == "windowsARM64" ]]; then

@@ -66,20 +66,6 @@ jobs:
           remove-codeql: "true"
           remove-docker-images: "true"
 
-      - name: Move GitHub _temp to /b for more space
-        run: |
-          set -x
-          sudo mkdir -p /b/_temp
-          sudo mount --bind /b/_temp /home/runner/work/_temp
-          sudo chown -R $(id -u):$(id -g) /home/runner/work/_temp
-
-      - name: Move GitHub workspace to /b for more space
-        run: |
-          set -x
-          sudo mkdir -p /b/workspace
-          sudo mount --bind /b/workspace $GITHUB_WORKSPACE
-          sudo chown -R $(id -u):$(id -g) $GITHUB_WORKSPACE
-
       - name: Install prereqs
         run: |
           set -x

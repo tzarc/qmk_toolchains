@@ -5,7 +5,7 @@ ARG OSX_SDK_URL="https://github.com/joseluisq/macosx-sdks/releases/download/15.0
 
 ARG OSX_CROSS_COMMIT="29fe6dd35522073c9df5800f8cd1feb4b9a993a8"
 
-ARG CROSSTOOL_REPO_REF="27cd8380e72bb1cf3e7cf4a06a9cdbdc57df6f72"
+ARG CROSSTOOL_REPO_REF="a10cdecf5bbbbaaf874863548f7386e73aebad4e"
 
 # Get the macOS SDK
 FROM alpine:${ALPINE_VERSION} AS sdk
@@ -105,7 +105,7 @@ RUN OSX_VERSION_MIN=10.13 UNATTENDED=1 ENABLE_COMPILER_RT_INSTALL=1 TARGET_DIR=/
 # Build crosstool-ng
 FROM build-osxcross AS build-crosstool-ng
 ARG CROSSTOOL_REPO_REF
-RUN git clone https://github.com/crosstool-ng/crosstool-ng.git /tmp/crosstool-ng \
+RUN git clone https://github.com/tzarc/crosstool-ng.git /tmp/crosstool-ng \
     && cd /tmp/crosstool-ng \
     && git checkout --progress --force $CROSSTOOL_REPO_REF \
     && ./bootstrap \

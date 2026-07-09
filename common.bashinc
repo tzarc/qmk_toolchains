@@ -510,6 +510,7 @@ function build_one() {
         # Save the build steps so that we can save/restore on GHA due to build execution time limits.
         echo "CT_DEBUG_CT_SAVE_STEPS=y" >>.config
         echo "CT_DEBUG_CT_SAVE_STEPS_GZIP=y" >>.config
+        echo "CT_DEBUG_CT_SAVE_STEPS_LAST_ONLY=y" >>.config
     fi
 
     # Set the toolchain version string

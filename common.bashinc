@@ -287,8 +287,13 @@ function build_one() {
         -e 's/^.*CT_ZSTD_NEEDED.*$/CT_ZSTD_NEEDED=n/' \
         -e 's/^.*CT_ZSTD.*$/CT_ZSTD=n/' \
         -e 's/^.*CT_DEBUG_GDB.*$/CT_DEBUG_GDB=y/' \
+        -e 's/^.*CT_GDB_V_.*$/# CT_GDB_V_???? is not set/' \
         -e 's@^.*CT_LOCAL_TARBALLS_DIR.*$@CT_LOCAL_TARBALLS_DIR="'"$script_dir/tarballs"'"@' \
         .config
+
+    # gdb v17 seems to be broken on macOS ARM64, so pin to v16 for now.
+    echo "CT_GDB_V_16=y" >>.config
+    ct_ng_olddefconfig
 
     # GDB's TUI causes issues with the build, so disable it.
     echo 'CT_GDB_CROSS_EXTRA_CONFIG_ARRAY="--disable-tui"' >>.config # see https://github.com/crosstool-ng/crosstool-ng/issues/321

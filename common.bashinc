@@ -164,15 +164,10 @@ __EOT__
 
 function build_one_help() {
     for arg in "$@"; do
-        case "$arg" in
-        --help)
-            echo
-            echo "$(basename $this_script) $(build_one_args | grep '(required)' | ${SED} -e 's@\s\+--.*@@g') $(build_one_args | sort | grep '(optional)' | ${SED} -e 's@\s\+--.*@@g' -e 's@^@[@' -e 's@$@]@' | tr '\n' ' ')"
-            echo
+        if [[ "$arg" == "--help" ]]; then
             build_one_args
             exit 0
-            ;;
-        esac
+        fi
     done
 }
 
@@ -257,11 +252,6 @@ function build_one() {
     umask 022
     verify_crosstool
     eval "$(parse_args "$@")"
-
-    if [[ ! -z "${help:-}" ]]; then
-        build_one_args
-        exit 0
-    fi
 
     [[ -d "$script_dir/tarballs" ]] || mkdir -p $script_dir/tarballs
 

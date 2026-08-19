@@ -18,8 +18,6 @@ env:
 
 jobs:
   tarballs:
-    if: always() && !cancelled()
-
     name: Download required tarballs
     runs-on: ubuntu-latest
 

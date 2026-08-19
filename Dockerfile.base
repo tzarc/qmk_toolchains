@@ -34,59 +34,10 @@ FROM ghcr.io/shepherdjerred/macos-cross-compiler:latest AS base-macoscompilers
 # Fix permissions on /tmp
 RUN chmod 1777 /tmp
 # Install required packages
+COPY support/packages.txt /tmp/packages.txt
 RUN export DEBIAN_FRONTEND="noninteractive" \
   && apt-get update \
-  && apt-get install --no-install-recommends -y \
-    apt-transport-https \
-    autoconf \
-    automake \
-    bash \
-    binutils-multiarch-dev \
-    bison \
-    build-essential \
-    ca-certificates \
-    clang \
-    cmake \
-    cpio \
-    curl \
-    flex \
-    gawk \
-    genisoimage \
-    git \
-    gperf \
-    help2man \
-    libbz2-dev \
-    libc6-dev \
-    libgmp-dev \
-    liblzma-dev \
-    libmpc-dev \
-    libmpfr-dev \
-    libncurses-dev \
-    libpsi3-dev \
-    libssl-dev \
-    libtool \
-    libtool-bin \
-    libxml2-dev \
-    libz-dev \
-    libzstd-dev \
-    lld \
-    lzma-dev \
-    make \
-    meson \
-    osslsigncode \
-    patch \
-    patchelf \
-    python3 \
-    rsync \
-    sudo \
-    texinfo \
-    unzip \
-    uuid-dev \
-    wget \
-    xz-utils \
-    zlib1g-dev \
-    zip \
-    zstd \
+  && xargs -a /tmp/packages.txt apt-get install --no-install-recommends -y \
   && apt-get clean \
   && rm -rf /var/cache/apt/archives /var/lib/apt/lists
 
@@ -115,62 +66,13 @@ RUN git clone https://github.com/crosstool-ng/crosstool-ng.git /tmp/crosstool-ng
 
 # Final image
 FROM ubuntu:noble AS final
+COPY support/packages.txt /tmp/packages.txt
 RUN export DEBIAN_FRONTEND="noninteractive" \
   && apt-get update \
-  && apt-get install --no-install-recommends -y \
-    apt-transport-https \
-    autoconf \
-    automake \
-    bash \
-    binutils-multiarch-dev \
-    bison \
-    build-essential \
-    ca-certificates \
-    clang \
-    cmake \
-    cpio \
-    curl \
-    flex \
-    gawk \
-    genisoimage \
-    git \
-    gperf \
-    help2man \
-    libbz2-dev \
-    libc6-dev \
-    libgmp-dev \
-    liblzma-dev \
-    libmpc-dev \
-    libmpfr-dev \
-    libncurses-dev \
-    libpsi3-dev \
-    libssl-dev \
-    libtool \
-    libtool-bin \
-    libxml2-dev \
-    libz-dev \
-    libzstd-dev \
-    lld \
-    lzma-dev \
-    make \
-    meson \
-    osslsigncode \
-    patch \
-    patchelf \
-    pkg-config \
-    python3 \
-    rsync \
-    sudo \
-    texinfo \
-    unzip \
-    uuid-dev \
-    wget \
-    xz-utils \
-    zlib1g-dev \
-    zip \
-    zstd \
+  && xargs -a /tmp/packages.txt apt-get install --no-install-recommends -y \
   && apt-get clean \
-  && rm -rf /var/cache/apt/archives /var/lib/apt/lists
+  && rm -rf /var/cache/apt/archives /var/lib/apt/lists \
+  && rm /tmp/packages.txt
 
 # Copy across the base image compilers and SDKs
 COPY --from=build-crosstool-ng /ct-ng /ct-ng

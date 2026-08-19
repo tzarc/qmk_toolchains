@@ -66,12 +66,6 @@ jobs:
           remove-codeql: "true"
           remove-docker-images: "true"
 
-      - name: Install prereqs
-        run: |
-          set -x
-          sudo apt-get update
-          sudo apt-get install -y zstd
-
       - name: Clone toolchains repo
         uses: actions/checkout@v7
 

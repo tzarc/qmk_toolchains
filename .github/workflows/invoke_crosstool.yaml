@@ -57,14 +57,6 @@ jobs:
           sudo mkdir $TC_WORKDIR
           sudo mount --bind $GITHUB_WORKSPACE $TC_WORKDIR
 
-      - name: Look at all this space for activities
-        run: |
-          set -x
-          sudo free -h
-          sudo swapon --show
-          sudo df -h
-          sudo mount | column -t
-
       - name: Download source tarballs
         uses: actions/download-artifact@v8
         with:
@@ -140,15 +132,6 @@ jobs:
 
           kill $MONITOR_PID 2>/dev/null || true
 
-      - name: Look at all this space for activities (post-build)
-        if: always() && !cancelled()
-        run: |
-          set -x
-          sudo free -h
-          sudo swapon --show
-          sudo df -h
-          sudo mount | column -t
-
       - name: Gather build logs
         if: always() && !cancelled()
         run: |
@@ -198,9 +181,3 @@ jobs:
           name: toolchain-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}
           path: |
             qmk_toolchain-gcc*-host_${{ inputs.build_host }}-target_${{ inputs.target_host }}${{ inputs.toolchain_suffix }}.tar.zst
-
-      - name: Space, the final job step
-        run: |
-          set -x
-          sudo df -h
-          sudo mount | column -t

@@ -14,6 +14,5 @@ build_one \
     --sample-name=riscv32-picolibc-elf \
     --vendor-name=unknown \
     --canadian-host=aarch64-apple-darwin24 \
-    --binutils-plugins \
     --no-cross-gdb-python \
     "$@"

@@ -43,18 +43,14 @@ function respawn_docker_if_needed() {
 
 export PATH="$HOME/.local/crosstool-ng/bin:$PATH"
 
-function havecmd() {
-    type "${1}" >/dev/null 2>&1 || return 1
-}
-
-havecmd gsed && SED=gsed || SED=sed
+command -v gsed >/dev/null 2>&1 && SED=gsed || SED=sed
 
 function cpu_count() {
-    nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+    getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
 }
 
 function verify_crosstool() {
-    if ! havecmd ct-ng; then
+    if ! command -v ct-ng >/dev/null 2>&1; then
         echo "ct-ng not found in PATH. Please install crosstool-ng first." >&2
         exit 1
     fi
@@ -149,7 +145,6 @@ function fn_os_arch_fromtriplet() {
 function build_one_args() {
     cat <<__EOT__
 --help                  -- Shows this help text
---build-target=<target> -- Which ct-ng build target to execute, default is 'build' (optional)
 --sample-name=<sample>  -- Seeds the crosstool-ng build with the sample configuration (required)
 --vendor-name=<vendor>  -- Overrides the vendor previously supplied by the sample (optional)
 --build-host-compile    -- Builds the toolchains targeting an older version of gcc for later version compatibility (optional)

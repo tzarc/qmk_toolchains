@@ -17,7 +17,6 @@ build_one \
     --sample-name=arm-none-eabi \
     --multilib-list=rmprofile \
     --libc=newlib \
-    --binutils-plugins \
     --extra-newlib-nano \
     --no-cross-gdb-python \
     "$@"

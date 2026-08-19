@@ -35,7 +35,7 @@ echo
 
 # Strip binaries
 find "${toolchain_dir}" -type f \
-    -name '*.o' -or -name '*.a' \
+    \( -name '*.o' -o -name '*.a' \) \
     -printf '%P\n' \
     -exec ${toolchain_prefix}strip --strip-debug '{}' \;
 

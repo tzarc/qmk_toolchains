@@ -2,6 +2,8 @@
 
 base_url="https://linux.qmk.fm/toolchain_tarballs"
 
+mkdir -p tarballs
+
 cat tarball-mirrors.txt | while read -r line; do
     # Skip empty lines and comments
     if [[ -z "$line" || "$line" =~ ^# ]]; then
@@ -12,9 +14,6 @@ cat tarball-mirrors.txt | while read -r line; do
     filename=$(basename $(echo "$line" | awk '{print $2}'))
     checksum=$(echo "$line" | awk '{print $1}')
     url="$base_url/$filename"
-
-    # Create the tarballs directory if it doesn't exist
-    mkdir -p tarballs
 
     # Check if the tarball already exists in the tarballs directory
     if [[ -f "tarballs/$filename" ]]; then

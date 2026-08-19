@@ -13,6 +13,5 @@ respawn_docker_if_needed "$@"
 build_one \
     --sample-name=avr \
     --canadian-host=aarch64-unknown-linux-gnu \
-    --binutils-plugins \
     --no-cross-gdb-python \
     "$@"

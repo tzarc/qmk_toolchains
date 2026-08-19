@@ -30,11 +30,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl
-
       - name: Download and repack tzarc/qmk_toolchains release
         run: |
           curl -fsSL https://api.github.com/repos/tzarc/qmk_toolchains/releases/tags/${{ inputs.tzarc_release_tag }} > release.json

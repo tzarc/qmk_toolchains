@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2024-2025 Nick Brassel (@tzarc)
+# Copyright 2024-2026 Nick Brassel (@tzarc)
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 set -eu
@@ -33,7 +33,7 @@ docker build -t ${BASE_IMAGE} -f Dockerfile.base .
 for target in "${!target_scripts[@]}"; do
     script=${target_scripts[$target]}
     check_file=${check_files[$target]}
-    if [ ! -x "toolchains/host_linuxX64-target_${target}/bin/${check_file}" ] &&  [ ! -x "toolchains/host_linuxX64-target_${target}/bin/${check_file}.exe" ]; then
+    if [ ! -x "toolchains/host_linuxX64-target_${target}/bin/${check_file}" ] && [ ! -x "toolchains/host_linuxX64-target_${target}/bin/${check_file}.exe" ]; then
         echo "Missing toolchain for ${target}, building..."
         ./${script} --container-image=${BASE_IMAGE}
     fi

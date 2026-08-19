@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
-# Copyright 2024-2025 Nick Brassel (@tzarc)
+# Copyright 2024-2026 Nick Brassel (@tzarc)
 # SPDX-License-Identifier: GPL-2.0-or-later
-
-this_script="$PWD/$(basename ${BASH_SOURCE[0]})"
-script_dir=$(dirname "${this_script}")
-cd "$script_dir"
-source "${script_dir}/common.bashinc"
-
-build_one_help "$@"
-respawn_docker_if_needed --container-image=ghcr.io/tzarc/qmk_toolchains:base "$@"
-
-build_one \
-    --build-host-compile \
-    --sample-name=x86_64-unknown-linux-gnu \
-    --vendor-name=qmk_bootstrap \
-    --dir-suffix=_qmk_bootstrap \
-    --no-cross-gdb-python \
-    "$@"
+exec "$(dirname "${BASH_SOURCE[0]}")/build_toolchain.py" --host linuxX64 --target linuxX64 --variant qmk_bootstrap "$@"

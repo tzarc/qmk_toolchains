@@ -1,3 +1,6 @@
+__pycache__
+.direnv
+
 build
 tarballs
 toolchains

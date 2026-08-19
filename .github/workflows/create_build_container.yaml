@@ -48,7 +48,6 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Login to GHCR
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -88,10 +87,8 @@ jobs:
     needs: [tarballs]
     uses: ./.github/workflows/create_one_toolchain.yaml
     with:
-      crosstool_host_os: linuxX64
       build_host: linuxX64
       target_host: linuxX64
-      build_script: host_linuxX64-target_linuxX64_qmk_bootstrap.sh
       fetch_bootstrap: false
       toolchain_suffix: "_qmk_bootstrap"
 
@@ -106,10 +103,8 @@ jobs:
         target_host: [linuxX64, linuxARM64, linuxRV64, windowsX64]
     uses: ./.github/workflows/create_one_toolchain.yaml
     with:
-      crosstool_host_os: linuxX64
       build_host: linuxX64
       target_host: ${{ matrix.target_host }}
-      build_script: host_linuxX64-target_${{ matrix.target_host }}.sh
 
   # Overall builder container
   builder-container:
@@ -153,7 +148,6 @@ jobs:
           ls -l
 
       - name: Login to GHCR
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io

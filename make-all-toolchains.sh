@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2024-2025 Nick Brassel (@tzarc)
+# Copyright 2024-2026 Nick Brassel (@tzarc)
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 set -eu
@@ -7,11 +7,8 @@ set -eu
 this_script="$PWD/$(basename ${BASH_SOURCE[0]})"
 script_dir=$(dirname "${this_script}")
 cd "$script_dir"
-source "${script_dir}/common.bashinc"
 
 BUILDER_IMAGE=${BUILDER_IMAGE:-ghcr.io/tzarc/qmk_toolchains:builder}
-
-respawn_docker_if_needed --container-image=${BUILDER_IMAGE} "$@"
 
 declare host_osarch_names=(
     linuxX64
@@ -38,10 +35,9 @@ declare -A check_files=(
 for target in "${target_names[@]}"; do
     for host in "${host_osarch_names[@]}"; do
         check_file=${check_files[$target]}
-        script="host_${host}-target_${target}.sh"
         if [ ! -x "toolchains/host_${host}-target_${target}/bin/${check_file}" ] && [ ! -x "toolchains/host_${host}-target_${target}/bin/${check_file}.exe" ]; then
             echo "Missing toolchain for ${target} on ${host}, building..."
-            ./${script} --container-image=${BUILDER_IMAGE} --no-keep-state "$@"
+            ./build_toolchain.py --host ${host} --target ${target} --container-image=${BUILDER_IMAGE} --no-keep-state "$@"
         fi
     done
 done
@@ -58,4 +54,3 @@ for target in "${target_names[@]}"; do
         fi
     done
 done
-

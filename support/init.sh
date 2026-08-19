@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2026 Nick Brassel (@tzarc)
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 set -eEuo pipefail
 
 export PATH="/qmk/bin:/ct-ng/bin:/cctools/bin:/gcc/bin:/osxcross/binutils/bin:/osxcross/bin:$PATH" # this must have `/cctools/bin:/gcc/bin` on $PATH before osxcross equivalent
@@ -22,4 +25,3 @@ else
         exec bash -li
     fi
 fi
-

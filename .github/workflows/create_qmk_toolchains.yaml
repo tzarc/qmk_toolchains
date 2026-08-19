@@ -37,10 +37,8 @@ jobs:
 
     uses: ./.github/workflows/create_one_toolchain.yaml
     with:
-      crosstool_host_os: linuxX64
       build_host: ${{ matrix.build_host }}
       target_host: ${{ matrix.target_host }}
-      build_script: host_${{ matrix.build_host }}-target_${{ matrix.target_host }}.sh
       fetch_bootstrap: false
 
   strip-and-repack-toolchains:

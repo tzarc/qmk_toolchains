@@ -4,10 +4,8 @@ name: (internal) Compile one toolchain
 on:
   workflow_call:
     inputs:
-      crosstool_host_os: { type: string, required: true }
       build_host: { type: string, required: true }
       target_host: { type: string, required: true }
-      build_script: { type: string, required: true }
       fetch_bootstrap: { type: boolean, required: false, default: true }
       toolchain_suffix: { type: string, required: false, default: "" }
 
@@ -22,10 +20,8 @@ jobs:
     name: Build toolchain (phase 1)
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}
-      build_script: ${{ inputs.build_script }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       script_args: "build STOP=cc_for_build"
@@ -37,10 +33,8 @@ jobs:
     needs: [phase1]
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}
-      build_script: ${{ inputs.build_script }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       script_args: "build RESTART=cc_for_host STOP=libc_post_cc"
@@ -52,10 +46,8 @@ jobs:
     needs: [phase2]
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}
-      build_script: ${{ inputs.build_script }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       script_args: "build RESTART=companion_libs_for_target STOP=companion_libs_for_target"
@@ -67,10 +59,8 @@ jobs:
     needs: [phase3]
     uses: ./.github/workflows/invoke_crosstool.yaml
     with:
-      crosstool_host_os: ${{ inputs.crosstool_host_os }}
       build_host: ${{ inputs.build_host }}
       target_host: ${{ inputs.target_host }}
-      build_script: ${{ inputs.build_script }}
       fetch_bootstrap: ${{ inputs.fetch_bootstrap }}
       toolchain_suffix: ${{ inputs.toolchain_suffix }}
       script_args: "build RESTART=binutils_for_target"

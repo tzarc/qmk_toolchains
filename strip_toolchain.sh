@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
+# Copyright 2026 Nick Brassel (@tzarc)
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 set -eEuo pipefail
 
 this_script="$PWD/$(basename ${BASH_SOURCE[0]})"
 script_dir=$(dirname "${this_script}")
 cd "$script_dir"
-source "${script_dir}/common.bashinc"
+
+fn_os_arch() {
+    local arch
+    case "$(uname -m)" in
+    aarch64) arch=ARM64 ;;
+    x86_64) arch=X64 ;;
+    riscv64) arch=RV64 ;;
+    *) arch=unknown ;;
+    esac
+    echo "linux${arch}"
+}
 
 if [[ -z "${1}" ]]; then
     echo "Usage: ${this_script} <path-to-toolchain-dir>"

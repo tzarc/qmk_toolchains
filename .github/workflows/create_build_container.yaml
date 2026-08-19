@@ -67,6 +67,8 @@ jobs:
             CROSSTOOL_REPO_REF=${{ env.CROSSTOOL_REPO_REF }}
           push: true
           platforms: linux/amd64
+          cache-from: type=registry,ref=ghcr.io/tzarc/qmk_toolchains:base-buildcache
+          cache-to: type=registry,ref=ghcr.io/tzarc/qmk_toolchains:base-buildcache,mode=max
           tags: |
             ghcr.io/tzarc/qmk_toolchains:base
 
@@ -168,5 +170,7 @@ jobs:
           file: Dockerfile.builder
           push: true
           platforms: linux/amd64
+          cache-from: type=registry,ref=ghcr.io/tzarc/qmk_toolchains:builder-buildcache
+          cache-to: type=registry,ref=ghcr.io/tzarc/qmk_toolchains:builder-buildcache,mode=max
           tags: |
             ghcr.io/tzarc/qmk_toolchains:builder

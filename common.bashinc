@@ -189,6 +189,38 @@ function ct_ng_olddefconfig() {
         true
 }
 
+# Surgically replaces an existing config entry in place, or appends it if not already present.
+function set_value() {
+    local name="$1"
+    local value="$2"
+    if grep -qE "^(# )?${name}(=.*| is not set)\$" .config; then
+        ${SED} -i -e "s@^\(# \)\?\(${name}\)\(=.*\| is not set\)\$@\2=${value}@" .config
+    else
+        echo "${name}=${value}" >>.config
+    fi
+}
+
+# Like set_value, but if the entry doesn't exist yet, inserts it next to its choice siblings
+# (matched by family_regex) instead of at EOF -- a bare `choice` member appended in isolation at
+# the end of the file may get silently reverted by the next `ct-ng olddefconfig`.
+function set_choice_value() {
+    local family_regex="$1"
+    local name="$2"
+    local value="$3"
+    # A choice group permits only one selection, so clear any other enabled sibling first.
+    ${SED} -i -e "s@^\(${family_regex}\)=.*\$@# \1 is not set@" .config
+    if grep -qE "^(# )?${name}(=.*| is not set)\$" .config; then
+        ${SED} -i -e "s@^\(# \)\?\(${name}\)\(=.*\| is not set\)\$@\2=${value}@" .config
+    else
+        local last_line=$(grep -nE "^(# )?${family_regex}(=.*| is not set)\$" .config | tail -1 | cut -d: -f1)
+        if [[ -n "${last_line}" ]]; then
+            ${SED} -i "${last_line}a ${name}=${value}" .config
+        else
+            echo "${name}=${value}" >>.config
+        fi
+    fi
+}
+
 function parse_args() {
     set -eEuo pipefail
     umask 022
@@ -200,6 +232,7 @@ function parse_args() {
 
     local -a positional_args=()
     while [[ ! -z "${1:-}" ]]; do
+        echo -e "\e[0;33m - Arg: \e[1;33m$1\e[0m" >&2
         case "$1" in
         --*=*)
             N=${1%%=*}
@@ -266,77 +299,86 @@ function build_one() {
     ct-ng $sample_name
 
     # Set up the build environment params
-    echo "CT_EXPERIMENTAL=y" >>.config # required for some features
-    echo "CT_FORCE_EXTRACT=y" >>.config
+    set_value CT_EXPERIMENTAL y # required for some features
+    set_value CT_FORCE_EXTRACT y
 
     # Enable stripping of the toolchain executables
-    echo "CT_STRIP_HOST_TOOLCHAIN_EXECUTABLES=y" >>.config
-    echo "CT_STRIP_TARGET_TOOLCHAIN_EXECUTABLES=y" >>.config
+    set_value CT_STRIP_HOST_TOOLCHAIN_EXECUTABLES y
+    set_value CT_STRIP_TARGET_TOOLCHAIN_EXECUTABLES y
 
     # Don't go overboard with the parallel jobs
-    echo "CT_PARALLEL_JOBS=$(cpu_count)" >>.config
+    set_value CT_PARALLEL_JOBS "$(cpu_count)"
 
     ct_ng_olddefconfig
-    # Disable the progress bar and other unnecessary features, zstd support was broken last time it was checked
-    ${SED} -i \
-        -e '/CT_LOG_PROGRESS_BAR/s/y$/n/' \
-        -e 's/^.*CT_PREFIX_DIR_RO.*$/CT_PREFIX_DIR_RO=n/' \
-        -e 's/^.*CT_CC_LANG_CXX.*$/CT_CC_LANG_CXX=y/' \
-        -e 's/^.*CT_CC_GCC_LTO_ZSTD.*$/CT_CC_GCC_LTO_ZSTD=n/' \
-        -e 's/^.*CT_COMP_LIBS_ZSTD.*$/CT_COMP_LIBS_ZSTD=n/' \
-        -e 's/^.*CT_ZSTD_NEEDED.*$/CT_ZSTD_NEEDED=n/' \
-        -e 's/^.*CT_ZSTD.*$/CT_ZSTD=n/' \
-        -e 's/^.*CT_DEBUG_GDB.*$/CT_DEBUG_GDB=y/' \
-        -e 's/^.*CT_GDB_V_.*$/# CT_GDB_V_???? is not set/' \
-        -e 's@^.*CT_LOCAL_TARBALLS_DIR.*$@CT_LOCAL_TARBALLS_DIR="'"$script_dir/tarballs"'"@' \
-        .config
+    
+    # Disable the progress bar and other unnecessary features, and zstd support was broken last time it was checked
+    set_value CT_LOCAL_TARBALLS_DIR "\"$script_dir/tarballs\""
+    set_value CT_LOG_PROGRESS_BAR n
+    set_value CT_PREFIX_DIR_RO n
+    set_value CT_CC_LANG_CXX y
+    set_value CT_CC_GCC_LTO_ZSTD n
+    set_value CT_COMP_LIBS_ZSTD n
+    set_value CT_ZSTD_NEEDED n
+    set_value CT_ZSTD n
+    set_value CT_DEBUG_GDB y
 
     # gdb v17 seems to be broken on macOS ARM64, so pin to v16 for now.
-    echo "CT_GDB_V_16=y" >>.config
+    set_choice_value 'CT_GDB_V_[A-Za-z0-9_]*' CT_GDB_V_16 y
     ct_ng_olddefconfig
 
     # GDB's TUI causes issues with the build, so disable it.
-    echo 'CT_GDB_CROSS_EXTRA_CONFIG_ARRAY="--disable-tui"' >>.config # see https://github.com/crosstool-ng/crosstool-ng/issues/321
+    set_value CT_GDB_CROSS_EXTRA_CONFIG_ARRAY '"--disable-tui"' # see https://github.com/crosstool-ng/crosstool-ng/issues/321
 
     # For baremetal ARM toolchains, pin binutils at 2.43 due to issues with ARM relocations (ChibiOS-Contrib): https://gcc.gnu.org/pipermail/gcc-help/2025-May/144169.html
     # Fixed in https://github.com/ChibiOS/ChibiOS-Contrib/commit/2fb815dfe05607e65f85083393e1c3aa41cdea3d (2025-06-06)
     # Can remove this override once newer ChibiOS-Contrib submodule revisions are merged into QMK firmware.
     if [[ -z "${build_host_compile:-}" ]] && [[ "${sample_name:-}" == *"arm"* ]]; then
-        echo 'CT_BINUTILS_V_2_43=y' >>.config
+        set_choice_value 'CT_BINUTILS_V_[A-Za-z0-9_]*' CT_BINUTILS_V_2_43 y
+    fi
+
+    if [[ ! -z "$(echo $sample_name | grep linux)" ]]; then
+        # Swap to an older version of glibc to avoid issues with older distros, especially things like older Debian with Raspberry Pi targets.
+        # See the glibc version compat list here: https://abi-laboratory.pro/?view=timeline&l=glibc -- 2.28 seems safe enough?
+        # NOTE: this must happen before any GCC version override below -- newer glibc versions select
+        # GCC_REQUIRE_*_or_later, which makes older CT_GCC_V_* choices invisible and silently reverted
+        # by ct-ng olddefconfig.
+        if [[ ! -z "$(echo $sample_name | grep riscv64-unknown-linux-gnu)" ]]; then
+            set_choice_value 'CT_GLIBC_V_[A-Za-z0-9_]*' CT_GLIBC_V_2_36 y
+            set_value CT_GLIBC_OLDEST_ABI '"2.36"'
+            set_value CT_CC_GCC_EXTRA_CONFIG_ARRAY '"--with-glibc-version=2.36"'
+        else
+            set_choice_value 'CT_GLIBC_V_[A-Za-z0-9_]*' CT_GLIBC_V_2_28 y
+            set_value CT_GLIBC_OLDEST_ABI '"2.28"'
+            set_value CT_CC_GCC_EXTRA_CONFIG_ARRAY '"--with-glibc-version=2.28"'
+        fi
+        ct_ng_olddefconfig
     fi
 
     # Builder older versions of the toolchain when we're building the base cross-compilers
     if [[ ! -z "${build_host_compile:-}" ]]; then
         # Don't need gdb for the host builds
-        echo 'CT_DEBUG_GDB=n' >>.config
+        set_value CT_DEBUG_GDB n
 
         ${SED} -i \
-            -e 's/^.*CT_GCC_V_.*$/# CT_GCC_V_???? is not set/' \
-            -e 's/^.*CT_GCC_VERSION.*$/# CT_GCC_VERSION is not set/' \
-            -e 's/^.*CT_GCC_.*_or_later$/# CT_GCC_????_or_later is not set/' \
-            -e 's/^.*CT_GCC_REQUIRE_.*_or_later$/# CT_GCC_REQUIRE_????_or_later is not set/' \
-            -e 's/^.*CT_GCC_.*_or_older.*$/# CT_GCC_V_????_or_older is not set/' \
-            -e 's/^.*CT_GCC_.*_or_later.*$/# CT_GCC_V_????_or_later is not set/' \
-            -e 's/^.*CT_GCC_later_than_.*$/# CT_GCC_later_than_???? is not set/' \
-            -e 's/^.*CT_GCC_older_than_.*$/# CT_GCC_older_than_???? is not set/' \
+            -e 's/^\(# \)\?\(CT_GCC_[0-9][A-Za-z0-9_]*_or_older\)\(=.*\| is not set\)$/# \2 is not set/' \
+            -e 's/^\(# \)\?\(CT_GCC_[0-9][A-Za-z0-9_]*_or_later\)\(=.*\| is not set\)$/# \2 is not set/' \
+            -e 's/^\(# \)\?\(CT_GCC_REQUIRE_[0-9][A-Za-z0-9_]*_or_later\)\(=.*\| is not set\)$/# \2 is not set/' \
+            -e 's/^\(# \)\?\(CT_GCC_later_than_[A-Za-z0-9_]*\)\(=.*\| is not set\)$/# \2 is not set/' \
+            -e 's/^\(# \)\?\(CT_GCC_older_than_[A-Za-z0-9_]*\)\(=.*\| is not set\)$/# \2 is not set/' \
             .config
 
         if [[ ! -z "$(echo $sample_name | grep riscv64-unknown-linux-gnu)" ]]; then
-            echo "CT_GCC_V_10=y" >>.config
-            echo "CT_GCC_VERSION=\"10.5.0\"" >>.config
+            set_choice_value 'CT_GCC_V_[A-Za-z0-9_]*' CT_GCC_V_10 y
+            set_value CT_GCC_VERSION '"10.5.0"'
         else
-            echo "CT_GCC_V_8=y" >>.config
-            echo "CT_GCC_VERSION=\"8.5.0\"" >>.config
+            set_choice_value 'CT_GCC_V_[A-Za-z0-9_]*' CT_GCC_V_8 y
+            set_value CT_GCC_VERSION '"8.5.0"'
         fi
 
         ct_ng_olddefconfig
 
-        ${SED} -i \
-            -e 's/^.*CT_MINGW_W64_V_.*$/# CT_MINGW_W64_V_???? is not set/' \
-            -e 's/^.*CT_MINGW_W64_VERSION.*$/# CT_MINGW_W64_VERSION is not set/' \
-            .config
-        echo "CT_MINGW_W64_V_V10_0=y" >>.config
-        echo "CT_MINGW_W64_VERSION=\"v10.0.0\"" >>.config
+        set_choice_value 'CT_MINGW_W64_V_[A-Za-z0-9_]*' CT_MINGW_W64_V_V10_0 y
+        set_value CT_MINGW_W64_VERSION '"v10.0.0"'
 
         ct_ng_olddefconfig
     fi
@@ -346,184 +388,137 @@ function build_one() {
     # Swap to an older version of Linux (LTS) and glibc to avoid execution issues with older distros, especially things like older Debian with Raspberry Pi targets.
     if [[ ! -z "$(echo $sample_name | grep riscv64-unknown-linux-gnu)" ]]; then
         # rv64 needs a slightly newer kernel
-        ${SED} -i \
-            -e 's/^.*CT_LINUX_V_.*$/# CT_LINUX_V_???? is not set/' \
-            -e 's/^.*CT_LINUX_VERSION.*$/CT_LINUX_VERSION="5.10"/' \
-            -e 's/^.*CT_GLIBC_MIN_KERNEL.*$/CT_GLIBC_MIN_KERNEL="5.10"/' \
-            .config
-        echo CT_LINUX_V_5_10=y >>.config
-        echo unset CT_GLIBC_KERNEL_VERSION_NONE >>.config
-        echo CT_GLIBC_KERNEL_VERSION_AS_HEADERS=y >>.config
-        echo CT_GLIBC_MIN_KERNEL="\${CT_LINUX_VERSION}" >>.config
+        set_choice_value 'CT_LINUX_V_[A-Za-z0-9_]*' CT_LINUX_V_5_10 y
+        set_value CT_LINUX_VERSION '"5.10"'
+        set_value CT_GLIBC_MIN_KERNEL '"5.10"'
+        set_choice_value 'CT_GLIBC_KERNEL_VERSION_[A-Za-z0-9_]*' CT_GLIBC_KERNEL_VERSION_AS_HEADERS y
     else
-        ${SED} -i \
-            -e 's/^.*CT_LINUX_V_.*$/# CT_LINUX_V_???? is not set/' \
-            -e 's/^.*CT_LINUX_VERSION.*$/CT_LINUX_VERSION="4.19"/' \
-            -e 's/^.*CT_GLIBC_MIN_KERNEL.*$/CT_GLIBC_MIN_KERNEL="4.19"/' \
-            .config
-        echo CT_LINUX_V_4_19=y >>.config
-        echo unset CT_GLIBC_KERNEL_VERSION_NONE >>.config
-        echo CT_GLIBC_KERNEL_VERSION_AS_HEADERS=y >>.config
-        echo CT_GLIBC_MIN_KERNEL="\${CT_LINUX_VERSION}" >>.config
+        set_choice_value 'CT_LINUX_V_[A-Za-z0-9_]*' CT_LINUX_V_4_19 y
+        set_value CT_LINUX_VERSION '"4.19"'
+        set_value CT_GLIBC_MIN_KERNEL '"4.19"'
+        set_choice_value 'CT_GLIBC_KERNEL_VERSION_[A-Za-z0-9_]*' CT_GLIBC_KERNEL_VERSION_AS_HEADERS y
     fi
 
     ct_ng_olddefconfig
 
     # Disable unnecessary languages
-    echo "CT_CC_LANG_FORTRAN=n" >>.config
-    echo "# CT_CC_LANG_FORTRAN is not set" >>.config
-    echo "CT_CC_LANG_JIT=n" >>.config
-    echo "# CT_CC_LANG_JIT is not set" >>.config
-    echo "CT_CC_LANG_ADA=n" >>.config
-    echo "# CT_CC_LANG_ADA is not set" >>.config
-    echo "CT_CC_LANG_D=n" >>.config
-    echo "# CT_CC_LANG_D is not set" >>.config
-    echo "CT_CC_LANG_OBJC=n" >>.config
-    echo "# CT_CC_LANG_OBJC is not set" >>.config
-    echo "CT_CC_LANG_OBJCXX=n" >>.config
-    echo "# CT_CC_LANG_OBJCXX is not set" >>.config
-    echo "CT_CC_LANG_GOLANG=n" >>.config
-    echo "# CT_CC_LANG_GOLANG is not set" >>.config
+    set_value CT_CC_LANG_FORTRAN n
+    set_value CT_CC_LANG_JIT n
+    set_value CT_CC_LANG_ADA n
+    set_value CT_CC_LANG_D n
+    set_value CT_CC_LANG_OBJC n
+    set_value CT_CC_LANG_OBJCXX n
+    set_value CT_CC_LANG_GOLANG n
 
     # Too many concurrent LTO runs breaks RISC-V builds on GHA, which terminate due to being OOM
     # See https://bugs.gentoo.org/946338 for similar issues
     # The following set of options all reduce memory usage during linking of the compiler itself. RISC-V builds will randomly fail on GitHub Actions runs if these aren't present.
-    echo 'CT_CC_GCC_EXTRA_CONFIG_ARRAY="--enable-link-serialization=1 --with-build-config=bootstrap-O1"' >>.config
-    echo 'CT_CC_GCC_CORE_EXTRA_CONFIG_ARRAY="--enable-link-serialization=1 --with-build-config=bootstrap-O1"' >>.config
-    echo "CT_CC_GCC_DISABLE_PCH=y" >>.config
-    echo 'CT_EXTRA_CFLAGS_FOR_HOST="-Os -g0"' >>.config
-    echo 'CT_EXTRA_CXXFLAGS_FOR_HOST="-Os -g0"' >>.config
+    # NOTE: appends to (rather than replaces) any existing CT_CC_GCC_EXTRA_CONFIG_ARRAY (e.g. --with-glibc-version set above) -- it's a plain Kconfig string, so a second set_value would otherwise clobber it.
+    existing_gcc_extra_config_array=$(${SED} -n -e 's@^CT_CC_GCC_EXTRA_CONFIG_ARRAY="\(.*\)"$@\1@p' .config)
+    set_value CT_CC_GCC_EXTRA_CONFIG_ARRAY "\"${existing_gcc_extra_config_array:+$existing_gcc_extra_config_array }--enable-link-serialization=1 --with-build-config=bootstrap-O1\""
+    set_value CT_CC_GCC_CORE_EXTRA_CONFIG_ARRAY '"--enable-link-serialization=1 --with-build-config=bootstrap-O1"'
+    set_value CT_CC_GCC_DISABLE_PCH y
+    set_value CT_EXTRA_CFLAGS_FOR_HOST '"-Os -g0"'
+    set_value CT_EXTRA_CXXFLAGS_FOR_HOST '"-Os -g0"'
     if [ -n "${canadian_host:-}" ] && [ -z "$(echo $toolchain_dir | grep macos)" ]; then
         # These only seem to be available with the toolchains built by the base container -- the macOS cross-compilers don't have them.
         # Those don't seem to have an issue with LTO, so safe to skip here.
-        echo 'CT_EXTRA_LDFLAGS_FOR_HOST="-Wl,--no-keep-memory -Wl,--reduce-memory-overheads"' >>.config
+        set_value CT_EXTRA_LDFLAGS_FOR_HOST '"-Wl,--no-keep-memory -Wl,--reduce-memory-overheads"'
     fi
 
     ct_ng_olddefconfig
 
     # Configure the required C library
     if [[ ! -z "${libc:-}" ]]; then
-        echo "CT_LIBC_$(echo $libc | tr 'a-z' 'A-Z')=y" >>.config
-        echo "CT_LIBC=\"$(echo $libc | tr 'A-Z' 'a-z')\"" >>.config
-        echo 'CT_COMP_LIBS_NEWLIB_NANO=n' >>.config
-        echo 'CT_COMP_LIBS_PICOLIBC=n' >>.config
+        set_value "CT_LIBC_$(echo $libc | tr 'a-z' 'A-Z')" y
+        set_value CT_LIBC "\"$(echo $libc | tr 'A-Z' 'a-z')\""
+        set_value CT_COMP_LIBS_NEWLIB_NANO n
+        set_value CT_COMP_LIBS_PICOLIBC n
         ct_ng_olddefconfig
 
         if [[ "${libc}" == "newlib" ]]; then
-            ${SED} -i \
-                -e 's/^.*CT_LIBC_NEWLIB_DISABLE_SUPPLIED_SYSCALLS.*$/CT_LIBC_NEWLIB_DISABLE_SUPPLIED_SYSCALLS=n/' \
-                .config
+            set_value CT_LIBC_NEWLIB_DISABLE_SUPPLIED_SYSCALLS n
         fi
         ct_ng_olddefconfig
     fi
 
     # Enable newlib-nano if requested
     if [[ ! -z "${extra_newlib_nano:-}" ]]; then
-        echo 'CT_COMP_LIBS_NEWLIB_NANO=y' >>.config
+        set_value CT_COMP_LIBS_NEWLIB_NANO y
         ct_ng_olddefconfig
-        ${SED} -i \
-            -e 's/^.*CT_LIBC_NEWLIB_EXTRA_SECTIONS.*$/CT_LIBC_NEWLIB_EXTRA_SECTIONS=y/' \
-            -e 's/^.*CT_LIBC_NEWLIB_NANO_MALLOC.*$/CT_LIBC_NEWLIB_NANO_MALLOC=y/' \
-            -e 's/^.*CT_COMP_LIBS_NEWLIB_NANO.*$/CT_COMP_LIBS_NEWLIB_NANO=y/' \
-            -e 's/^.*CT_NEWLIB_NANO_INSTALL_IN_TARGET.*$/CT_NEWLIB_NANO_INSTALL_IN_TARGET=y/' \
-            -e 's/^.*CT_LIBC_NEWLIB_NANO_EXTRA_SECTIONS.*$/CT_LIBC_NEWLIB_NANO_EXTRA_SECTIONS=y/' \
-            .config
+        set_value CT_LIBC_NEWLIB_EXTRA_SECTIONS y
+        set_value CT_LIBC_NEWLIB_NANO_MALLOC y
+        set_value CT_NEWLIB_NANO_INSTALL_IN_TARGET y
+        set_value CT_LIBC_NEWLIB_NANO_EXTRA_SECTIONS y
         ct_ng_olddefconfig
     fi
 
     # Enable picolibc if requested
     if [[ ! -z "${extra_picolibc:-}" ]]; then
-        echo 'CT_COMP_LIBS_PICOLIBC=y' >>.config
+        set_value CT_COMP_LIBS_PICOLIBC y
         ct_ng_olddefconfig
-        ${SED} -i \
-            -e 's/^.*CT_PICOLIBC_INSTALL_IN_TARGET.*$/CT_PICOLIBC_INSTALL_IN_TARGET=y/' \
-            -e 's/^.*CT_LIBC_PICOLIBC_GCC_LIBSTDCXX.*$/CT_LIBC_PICOLIBC_GCC_LIBSTDCXX=y/' \
-            .config
+        set_value CT_PICOLIBC_INSTALL_IN_TARGET y
+        set_value CT_LIBC_PICOLIBC_GCC_LIBSTDCXX y
         ct_ng_olddefconfig
     fi
 
     # Set the list of multilib targets
     if [[ ! -z "${multilib_list:-}" ]]; then
-        ${SED} -i \
-            -e 's/^.*CT_CC_GCC_MULTILIB_LIST.*$/CT_CC_GCC_MULTILIB_LIST="'$multilib_list'"/' \
-            .config
+        set_value CT_CC_GCC_MULTILIB_LIST "\"$multilib_list\""
         ct_ng_olddefconfig
     fi
 
     # Override the vendor name string
     if [[ ! -z "${vendor_name:-}" ]]; then
-        ${SED} -i \
-            -e 's/^.*CT_TARGET_VENDOR.*$/CT_TARGET_VENDOR="'$vendor_name'"/' \
-            .config
+        set_value CT_TARGET_VENDOR "\"$vendor_name\""
         ct_ng_olddefconfig
     fi
 
     # Disable python for cross-compile GDB if necessary
     if [[ ! -z "${no_cross_gdb_python:-}" ]]; then
-        echo CT_GDB_CROSS_PYTHON=n >>.config
+        set_value CT_GDB_CROSS_PYTHON n
         ct_ng_olddefconfig
     fi
 
     # Enable canadian builds if requested
     if [[ ! -z "${canadian_host:-}" ]]; then
-        ${SED} -i \
-            -e 's/^.*CT_CROSS.*$/# CT_CROSS is not set/' \
-            -e 's/^.*CT_CANADIAN.*$/CT_CANADIAN=y/' \
-            -e 's/^.*CT_TOOLCHAIN_TYPE.*$/CT_TOOLCHAIN_TYPE="canadian"/' \
-            .config
+        set_value CT_CROSS n
+        set_value CT_CANADIAN y
+        set_value CT_TOOLCHAIN_TYPE '"canadian"'
 
-        echo "CT_HOST=\"${canadian_host}\"" >>.config
+        set_value CT_HOST "\"${canadian_host}\""
 
         if [[ ! -z "$(echo ${canadian_host} | grep mingw32)" ]]; then
             # Fixup Windows builds:
-            echo "# CT_LIBC_GLIBC is not set" >>.config
-            echo CT_BINUTILS_PLUGINS=n >>.config # need to disable these as builds providing LTO fail on Windows because the DLLs export too many symbols (>65536)
+            set_value CT_LIBC_GLIBC n
+            set_value CT_BINUTILS_PLUGINS n # need to disable these as builds providing LTO fail on Windows because the DLLs export too many symbols (>65536)
         fi
 
-        ct_ng_olddefconfig
-    fi
-
-    if [[ ! -z "$(echo $sample_name | grep linux)" ]]; then
-        # Swap to an older version of glibc to avoid issues with older distros, especially things like older Debian with Raspberry Pi targets.
-        # See the glibc version compat list here: https://abi-laboratory.pro/?view=timeline&l=glibc -- 2.28 seems safe enough?
-        ${SED} -i \
-            -e 's/^.*CT_GLIBC_V_.*$/# CT_GLIBC_V_???? is not set/' \
-            .config
-        if [[ ! -z "$(echo $sample_name | grep riscv64-unknown-linux-gnu)" ]]; then
-            echo "CT_GLIBC_V_2_36=y" >>.config
-            echo "CT_GLIBC_OLDEST_ABI=\"2.36\"" >>.config
-            echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--with-glibc-version=2.36\"" >>.config
-        else
-            echo "CT_GLIBC_V_2_28=y" >>.config
-            echo "CT_GLIBC_OLDEST_ABI=\"2.28\"" >>.config
-            echo "CT_CC_GCC_EXTRA_CONFIG_ARRAY=\"--with-glibc-version=2.28\"" >>.config
-        fi
         ct_ng_olddefconfig
     fi
 
     # Set the toolchain output directory
-    ${SED} -i \
-        -e 's@^.*CT_PREFIX_DIR=.*$@CT_PREFIX_DIR="'${toolchain_dir}'"@' \
-        .config
+    set_value CT_PREFIX_DIR "\"$toolchain_dir\""
     ct_ng_olddefconfig
 
     # Enable debug options
-    echo "CT_DEBUG_CT=y" >>.config
+    set_value CT_DEBUG_CT y
     ct_ng_olddefconfig
 
     if [[ -z "${no_keep_state:-}" ]]; then
         # Save the build steps so that we can save/restore on GHA due to build execution time limits.
-        echo "CT_DEBUG_CT_SAVE_STEPS=y" >>.config
-        echo "CT_DEBUG_CT_SAVE_STEPS_GZIP=y" >>.config
-        echo "CT_DEBUG_CT_SAVE_STEPS_LAST_ONLY=y" >>.config
+        set_value CT_DEBUG_CT_SAVE_STEPS y
+        set_value CT_DEBUG_CT_SAVE_STEPS_GZIP y
+        set_value CT_DEBUG_CT_SAVE_STEPS_LAST_ONLY y
     fi
 
     # Set the toolchain version string
+    # NOTE: can't use set_value here -- the value contains both '/' (path) and '@' (separator), the only two delimiters set_value/set_choice_value support.
     echo "CT_TOOLCHAIN_PKGVERSION=\"qmk/qmk_toolchains @ $(git describe --always --dirty --exclude '*')\"" >>.config
 
     if [[ -n "${tools_prefix:-}" ]]; then
         # Set the tools prefix
-        echo "CT_BUILD_PREFIX=\"${tools_prefix}\"" >>.config
+        set_value CT_BUILD_PREFIX "\"${tools_prefix}\""
     fi
 
     ct_ng_olddefconfig

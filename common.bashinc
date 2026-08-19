@@ -32,8 +32,8 @@ function respawn_docker_if_needed() {
             -v "$script_dir:$TC_WORKDIR" \
             -w "$TC_WORKDIR" \
             -e TC_WORKDIR="$TC_WORKDIR" \
-            --cpus="$(bc -l <<< "scale=2; $(nproc)*0.9")" \
-            --memory="$(bc -l <<< "scale=2; $(free -m | awk '/^Mem:/{print $2}') * 0.9 / 1")m" \
+            --cpus="$(awk "BEGIN{printf \"%.2f\", $(nproc)*0.9}")" \
+            --memory="$(free -m | awk '/^Mem:/{printf "%.0fm", $2*0.9}')" \
             --memory-swap="-1" \
             $container_image \
             ./$(basename $this_script) "$@"

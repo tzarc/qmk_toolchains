@@ -9,6 +9,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -31,9 +32,8 @@ class Combo:
     build_host_compile: bool = False
     dir_suffix: str = ""
     container_image: str = BUILDER_IMAGE
-    # Default --tools-prefix to the bootstrap compiler (ported from the
-    # host_linuxX64-target_{linux*,windows*}.sh wrappers; their `uname ==
-    # Linux` conditional collapses under the Linux-only assumption).
+    # Default --tools-prefix to the bootstrap compiler (base/host toolchains
+    # must be built with it so they link against the old glibc).
     bootstrap_tools_prefix: bool = False
 
 
@@ -215,7 +215,7 @@ class KconfigEditor:
 
 
 def ct_ng_olddefconfig() -> None:
-    # Exit status deliberately ignored, matching the bash (`... || true`).
+    # Exit status deliberately ignored -- olddefconfig noise is not fatal.
     proc = subprocess.run(
         ["ct-ng", "olddefconfig"],
         stdout=subprocess.PIPE,
@@ -576,7 +576,7 @@ def build_one(args: argparse.Namespace, combo: Combo) -> None:
     if positional == ["source"]:
         subprocess.run(
             ["ct-ng", "source"], check=False
-        )  # exit status deliberately ignored (|| true)
+        )  # exit status deliberately ignored -- best-effort prefetch
         return
 
     proc = subprocess.run(
@@ -638,6 +638,31 @@ def build_one(args: argparse.Namespace, combo: Combo) -> None:
     )
 
 
+def _sorted_combos() -> list[tuple[str, str, str | None]]:
+    return sorted(COMBOS, key=lambda k: (k[0], k[1], k[2] or ""))
+
+
+def print_combo_table() -> None:
+    rows = [
+        (
+            host,
+            target,
+            variant or "",
+            f"./build_toolchain.py --host {host} --target {target}"
+            + (f" --variant {variant}" if variant else ""),
+        )
+        for host, target, variant in _sorted_combos()
+    ]
+    headers = ("Host", "Target", "Variant", "Invocation")
+    widths = [
+        max(len(headers[i]), *(len(r[i]) for r in rows)) for i in range(len(headers))
+    ]
+    print("  ".join(h.ljust(w) for h, w in zip(headers, widths)).rstrip())
+    print("  ".join("-" * w for w in widths))
+    for row in rows:
+        print("  ".join(c.ljust(w) for c, w in zip(row, widths)).rstrip())
+
+
 def parse_cli(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Configure and build one QMK toolchain via crosstool-ng.",
@@ -658,7 +683,12 @@ def parse_cli(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--list-combos",
         action="store_true",
-        help="Print 'host target [variant]' per combo and exit",
+        help="Print the known combos and exit (a table, or 'host target [variant]' lines with --porcelain)",
+    )
+    parser.add_argument(
+        "--porcelain",
+        action="store_true",
+        help="Machine-readable --list-combos output for script automation",
     )
     parser.add_argument(
         "--container-image",
@@ -681,6 +711,11 @@ def parse_cli(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "ct_ng_args", nargs="*", help="Arguments passed through to ct-ng"
     )
+    if not argv:
+        parser.print_help()
+        print()
+        print_combo_table()
+        sys.exit(0)
     args = parser.parse_intermixed_args(argv)
     if args.variant is not None:
         args.variant = args.variant.lstrip("_") or None
@@ -688,6 +723,8 @@ def parse_cli(argv: list[str]) -> argparse.Namespace:
 
 
 def main() -> None:
+    # Die quietly when output is piped into `head` etc., like any other CLI tool
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     sys.stdout.reconfigure(line_buffering=True)
     # macOS SDK Version
     os.environ["SDK_VERSION"] = "15.0"
@@ -696,10 +733,11 @@ def main() -> None:
     args = parse_cli(sys.argv[1:])
 
     if args.list_combos:
-        for host, target, variant in sorted(
-            COMBOS, key=lambda k: (k[0], k[1], k[2] or "")
-        ):
-            print(f"{host} {target} {variant}" if variant else f"{host} {target}")
+        if args.porcelain:
+            for host, target, variant in _sorted_combos():
+                print(f"{host} {target} {variant}" if variant else f"{host} {target}")
+            return
+        print_combo_table()
         return
 
     if not args.host or not args.target:

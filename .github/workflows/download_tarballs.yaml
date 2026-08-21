@@ -4,7 +4,6 @@ name: (internal) Download tarballs
 on:
   workflow_call:
     inputs:
-      state_name: { type: string, required: true }
       container_name:
         {
           type: string,
@@ -35,7 +34,7 @@ jobs:
           set -x
           ./download_tarballs.sh
           # Clear out the tools prefix so we can run everything, even without a bootstrap compiler present
-          ./build_toolchain.py --list-combos | while read -r host target variant; do
+          ./build_toolchain.py --list-combos --porcelain | while read -r host target variant; do
             ./build_toolchain.py --host $host --target $target --variant "${variant:-}" --tools-prefix= source --container-image=${{ inputs.container_name }}
           done
           tar acvf tarballs.tar.zst tarballs

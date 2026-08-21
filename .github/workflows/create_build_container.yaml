@@ -11,8 +11,6 @@ permissions:
   packages: write
 
 env:
-  TC_WORKDIR: "/t"
-  EXECUTE_UNDER_DOCKER: true
   CROSSTOOL_REPO_REF: d7a90ff11aae5e59d6acd8c491f0297c15b7fa37
 
 jobs:
@@ -77,7 +75,6 @@ jobs:
     needs: [base_container]
     uses: ./.github/workflows/download_tarballs.yaml
     with:
-      state_name: create_build_container
       container_name: ghcr.io/tzarc/qmk_toolchains:base
 
   # Build a copy of linux/X64 toolchain to bootstrap the rest so that the resulting compilers are compatible with the old glibc.

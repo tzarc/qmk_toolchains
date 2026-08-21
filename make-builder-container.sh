@@ -11,12 +11,13 @@ cd "$script_dir"
 BASE_IMAGE=${BASE_IMAGE:-ghcr.io/tzarc/qmk_toolchains:base}
 BUILDER_IMAGE=${BUILDER_IMAGE:-ghcr.io/tzarc/qmk_toolchains:builder}
 
-declare -A target_scripts=(
-    [linuxX64_qmk_bootstrap]='host_linuxX64-target_linuxX64_qmk_bootstrap.sh'
-    [linuxX64]='host_linuxX64-target_linuxX64.sh'
-    [linuxARM64]='host_linuxX64-target_linuxARM64.sh'
-    [linuxRV64]='host_linuxX64-target_linuxRV64.sh'
-    [windowsX64]='host_linuxX64-target_windowsX64.sh'
+# Keys double as the toolchain directory suffix; values are the build_toolchain.py selector args
+declare -A target_args=(
+    [linuxX64_qmk_bootstrap]='--target linuxX64 --variant qmk_bootstrap'
+    [linuxX64]='--target linuxX64'
+    [linuxARM64]='--target linuxARM64'
+    [linuxRV64]='--target linuxRV64'
+    [windowsX64]='--target windowsX64'
 )
 
 # Use gdb as it's the last step in the toolchain
@@ -30,12 +31,11 @@ declare -A check_files=(
 
 docker build -t ${BASE_IMAGE} -f Dockerfile.base .
 
-for target in "${!target_scripts[@]}"; do
-    script=${target_scripts[$target]}
+for target in "${!target_args[@]}"; do
     check_file=${check_files[$target]}
     if [ ! -x "toolchains/host_linuxX64-target_${target}/bin/${check_file}" ] && [ ! -x "toolchains/host_linuxX64-target_${target}/bin/${check_file}.exe" ]; then
         echo "Missing toolchain for ${target}, building..."
-        ./${script} --container-image=${BASE_IMAGE}
+        ./build_toolchain.py --host linuxX64 ${target_args[$target]} --container-image=${BASE_IMAGE}
     fi
     tar acf qmk_toolchain-host_linuxX64-target_${target}.tar -C toolchains host_linuxX64-target_${target}
     zstdmt -T0 -19 --long --rm --force qmk_toolchain-host_linuxX64-target_${target}.tar
